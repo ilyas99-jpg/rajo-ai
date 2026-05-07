@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /record
+Disallow: /dashboard
+
+Sitemap: https://rajoai.com/sitemap.xml
