@@ -15,7 +15,7 @@ import { createRegisteredUser } from "./utils/submissions";
 
 type View = "home" | "about" | "auth" | "dashboard" | "record" | "prompts";
 type AuthMode = "register" | "login";
-type RecorderState = "idle" | "recording" | "recorded";
+type RecorderState = "idle" | "starting" | "recording" | "recorded";
 
 const PROMPTS_KEY = "rajo-ai-prompts";
 const DIALECT_OPTIONS = [
@@ -722,7 +722,6 @@ function RecordingPage({
   const [recorderState, setRecorderState] = useState<RecorderState>("idle");
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
-  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [duration, setDuration] = useState(0);
   const [metadata, setMetadata] = useState({
     deviceType: "Phone",
@@ -732,7 +731,9 @@ function RecordingPage({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
+  const startedAtRef = useRef<number | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const prompt = prompts[promptIndex] ?? prompts[0];
@@ -744,47 +745,99 @@ function RecordingPage({
     };
   }, [audioUrl]);
 
+  useEffect(() => {
+    return () => stopActiveStream();
+  }, []);
+
   async function startRecording() {
+    if (recorderState !== "idle") return;
+
     setError("");
     setAudioBlob(null);
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl("");
+    setDuration(0);
+    setRecorderState("starting");
 
     try {
+      if (!window.isSecureContext) {
+        throw new Error("Microphone recording requires a secure HTTPS connection.");
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("This browser does not support microphone recording.");
+      }
+
+      if (typeof MediaRecorder === "undefined") {
+        throw new Error("This browser does not support the MediaRecorder API.");
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream);
+      const mimeType = getSupportedAudioMimeType();
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+
+      streamRef.current = stream;
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
       recorder.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        const type = recorder.mimeType || mimeType || chunksRef.current[0]?.type || "audio/webm";
+        const blob = new Blob(chunksRef.current, { type });
         const url = URL.createObjectURL(blob);
         setAudioBlob(blob);
         setAudioUrl(url);
         setRecorderState("recorded");
-        stream.getTracks().forEach((track) => track.stop());
-        if (startedAt) setDuration(Math.max((Date.now() - startedAt) / 1000, 0));
+        stopActiveStream();
+        setDuration(startedAtRef.current ? Math.max((Date.now() - startedAtRef.current) / 1000, 0) : 0);
+        startedAtRef.current = null;
       };
-      setStartedAt(Date.now());
+      recorder.onerror = () => {
+        stopActiveStream();
+        startedAtRef.current = null;
+        setRecorderState("idle");
+        setError("Recording failed. Please try again or check Safari microphone permissions.");
+      };
+      startedAtRef.current = Date.now();
       recorder.start();
       setRecorderState("recording");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Microphone access failed.");
+      stopActiveStream();
+      startedAtRef.current = null;
+      setRecorderState("idle");
+      setError(getMicrophoneErrorMessage(err));
     }
   }
 
   function stopRecording() {
-    mediaRecorderRef.current?.stop();
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+
+    try {
+      recorder.stop();
+    } catch (err) {
+      stopActiveStream();
+      startedAtRef.current = null;
+      setRecorderState("idle");
+      setError(getMicrophoneErrorMessage(err));
+    }
   }
 
   function resetRecording() {
     setAudioBlob(null);
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioUrl("");
+    stopActiveStream();
+    startedAtRef.current = null;
     setRecorderState("idle");
     setDuration(0);
+  }
+
+  function stopActiveStream() {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    mediaRecorderRef.current = null;
   }
 
   async function submitRecording() {
@@ -847,6 +900,12 @@ function RecordingPage({
             )}
           </div>
 
+          {recorderState === "starting" && (
+            <div className="mt-6 rounded-3xl border border-blue-100 bg-blue-50 p-5 text-center">
+              <p className="text-lg font-black text-blue-700">Starting microphone...</p>
+            </div>
+          )}
+
           {recorderState === "recording" && (
             <div className="mt-6 rounded-3xl border border-red-100 bg-red-50 p-5 text-center">
               <p className="text-lg font-black text-red-700">Recording...</p>
@@ -872,7 +931,7 @@ function RecordingPage({
           <div className="mt-7 flex flex-wrap gap-3">
             {recorderState === "idle" && (
               <>
-                <button className="btn-primary" onClick={startRecording}>Start Recording</button>
+                <button className="btn-primary" type="button" onClick={() => void startRecording()}>Start Recording</button>
                 <button className="btn-secondary" onClick={skipPrompt}>Skip Prompt</button>
               </>
             )}
@@ -1039,6 +1098,40 @@ function ageToRange(age: number): string {
   if (age >= 35) return "35-44";
   if (age >= 25) return "25-34";
   return "18-24";
+}
+
+function getSupportedAudioMimeType(): string | undefined {
+  if (typeof MediaRecorder.isTypeSupported !== "function") return undefined;
+
+  const supportedTypes = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
+    "audio/aac",
+  ];
+
+  return supportedTypes.find((type) => MediaRecorder.isTypeSupported(type));
+}
+
+function getMicrophoneErrorMessage(err: unknown): string {
+  if (!(err instanceof DOMException) && !(err instanceof Error)) {
+    return "Microphone access failed. Please try again.";
+  }
+
+  if (err.name === "NotAllowedError" || err.name === "SecurityError") {
+    return "Microphone access was blocked. Tap Start Recording again and allow microphone access in Safari.";
+  }
+
+  if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+    return "No microphone was found on this device.";
+  }
+
+  if (err.name === "NotReadableError" || err.name === "AbortError") {
+    return "Safari could not start the microphone. Close other apps using the microphone and try again.";
+  }
+
+  return err.message || "Microphone access failed. Please try again.";
 }
 
 function getInitialView(): View {

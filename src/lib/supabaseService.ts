@@ -264,7 +264,7 @@ export async function uploadAndSaveRecording(
   const sb = getSupabase();
 
   const contentType = audioBlob.type || "audio/webm";
-  const extension = contentType.includes("wav") ? "wav" : "webm";
+  const extension = getAudioExtension(contentType);
   const path = `${donorId}/${sentenceId}-${Date.now()}.${extension}`;
   const durationSeconds = await getAudioDurationSeconds(audioBlob);
 
@@ -318,6 +318,15 @@ export async function uploadAndSaveRecording(
   }
 
   return mapRecordingRow(recordingData as RecordingRow);
+}
+
+function getAudioExtension(contentType: string): string {
+  if (contentType.includes("mp4")) return "m4a";
+  if (contentType.includes("aac")) return "aac";
+  if (contentType.includes("mpeg")) return "mp3";
+  if (contentType.includes("ogg")) return "ogg";
+  if (contentType.includes("wav")) return "wav";
+  return "webm";
 }
 
 function getAudioDurationSeconds(audioBlob: Blob): Promise<number | null> {
