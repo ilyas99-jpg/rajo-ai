@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { AdminDashboard } from "./admin/AdminDashboard";
+import { BrandWaveform } from "./components/Brand";
 import { voicePrompts as starterPrompts } from "./data/prompts";
 import {
   fetchDonorProgress,
@@ -26,13 +27,37 @@ const DIALECT_OPTIONS = [
   "Other",
 ];
 
+const PRIORITY_COUNTRIES = ["Somalia", "Kenya", "Ethiopia", "Djibouti", "Uganda", "USA", "UK", "Canada"];
+const OTHER_COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Angola", "Argentina", "Armenia", "Australia", "Austria",
+  "Azerbaijan", "Bahrain", "Bangladesh", "Belarus", "Belgium", "Benin", "Bolivia", "Brazil",
+  "Burkina Faso", "Burundi", "Cambodia", "Cameroon", "Chad", "Chile", "China", "Colombia",
+  "Comoros", "Congo", "Costa Rica", "Côte d'Ivoire", "Croatia", "Cuba", "Cyprus",
+  "Czech Republic", "Denmark", "Dominican Republic", "DR Congo", "Ecuador", "Egypt",
+  "El Salvador", "Eritrea", "Estonia", "Finland", "France", "Gambia", "Georgia", "Germany",
+  "Ghana", "Greece", "Guatemala", "Guinea", "Guinea-Bissau", "Haiti", "Honduras", "Hungary",
+  "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy", "Jamaica", "Japan",
+  "Jordan", "Kazakhstan", "Kosovo", "Kuwait", "Kyrgyzstan", "Laos", "Latvia", "Lebanon",
+  "Lesotho", "Liberia", "Libya", "Lithuania", "Luxembourg", "Madagascar", "Malawi", "Malaysia",
+  "Maldives", "Mali", "Mauritania", "Mexico", "Moldova", "Mongolia", "Morocco", "Mozambique",
+  "Myanmar", "Namibia", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria",
+  "North Korea", "Norway", "Oman", "Pakistan", "Palestine", "Panama", "Paraguay", "Peru",
+  "Philippines", "Poland", "Portugal", "Qatar", "Romania", "Russia", "Rwanda", "Saudi Arabia",
+  "Senegal", "Serbia", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "South Africa",
+  "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Sweden", "Switzerland",
+  "Syria", "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Togo", "Tunisia", "Turkey",
+  "Turkmenistan", "Ukraine", "United Arab Emirates", "Uruguay", "Uzbekistan", "Venezuela",
+  "Vietnam", "Yemen", "Zambia", "Zimbabwe",
+];
+
 const initialFormData: RegistrationFormData = {
   fullName: "",
   email: "",
   password: "",
   age: "18",
   gender: "Prefer not to say",
-  countryCity: "",
+  country: "",
+  city: "",
   dialect: "",
   dialectOther: "",
   consent: true,
@@ -53,6 +78,7 @@ function VoiceCollectionApp() {
   const [completedPromptIds, setCompletedPromptIds] = useState<string[]>([]);
   const [prompts, setPrompts] = useState<VoicePrompt[]>(loadPrompts);
   const [formData, setFormData] = useState(initialFormData);
+  const postAuthRef = useRef<View>("dashboard");
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [message, setMessage] = useState("");
@@ -137,7 +163,9 @@ function VoiceCollectionApp() {
       setLoginPassword("");
       setHistory([]);
       setCompletedPromptIds([]);
-      navigate("dashboard", "/");
+      const dest = postAuthRef.current;
+      postAuthRef.current = "dashboard";
+      navigate(dest, dest === "record" ? "/record" : "/");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Registration failed.");
     } finally {
@@ -156,7 +184,9 @@ function VoiceCollectionApp() {
       setDonorId(profile.donorId);
       setLoginPassword("");
       await loadProgress(profile.donorId);
-      navigate("dashboard", "/");
+      const dest = postAuthRef.current;
+      postAuthRef.current = "dashboard";
+      navigate(dest, dest === "record" ? "/record" : "/");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Login failed.");
     } finally {
@@ -192,14 +222,15 @@ function VoiceCollectionApp() {
     );
   }
 
-  function startFromHome(mode: AuthMode) {
+  function startFromHome(mode: AuthMode, afterAuth: View = "dashboard") {
     if (user) {
       navigate("record", "/record");
       return;
     }
 
+    postAuthRef.current = afterAuth;
     setAuthMode(mode);
-    navigate("auth", mode === "login" ? "/signin" : "/record");
+    navigate("auth", "/signin");
   }
 
   return (
@@ -218,9 +249,9 @@ function VoiceCollectionApp() {
         {authLoading ? (
           <CenteredMessage text="Loading RAJO AI..." />
         ) : view === "home" ? (
-          <HomePage onSignIn={() => startFromHome("login")} onStart={() => startFromHome("register")} />
+          <HomePage onStart={() => startFromHome("register", "record")} />
         ) : view === "about" ? (
-          <AboutPage onStart={() => startFromHome("register")} />
+          <AboutPage onStart={() => startFromHome("register", "record")} />
         ) : view === "auth" ? (
           <AuthPage
             authMode={authMode}
@@ -242,7 +273,6 @@ function VoiceCollectionApp() {
             prompts={prompts}
             stats={stats}
             user={user}
-            onManagePrompts={() => navigate("prompts", "/prompts")}
             onRecord={() => navigate("record", "/record")}
           />
         ) : view === "record" && user ? (
@@ -257,7 +287,7 @@ function VoiceCollectionApp() {
         ) : view === "prompts" && user ? (
           <PromptManagement prompts={prompts} onBack={() => navigate("dashboard", "/")} onPromptsChange={setPrompts} />
         ) : (
-          <HomePage onSignIn={() => startFromHome("login")} onStart={() => startFromHome("register")} />
+          <HomePage onStart={() => startFromHome("register", "record")} />
         )}
       </main>
     </div>
@@ -284,24 +314,18 @@ function TopBar({
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-        <button className="flex items-center gap-3" onClick={onHome}>
+        <button className="flex items-center gap-3" onClick={onDashboard}>
           <img alt="RAJO AI" className="h-14 w-auto object-contain" src="/logo%20rajo%20ai.png" />
         </button>
         <nav className="flex items-center gap-1 sm:gap-2">
-          
-          {activeView !== "home" && (
-  <button className="btn-ghost" onClick={onHome}>
-    Home
-  </button>
-)}
+          {activeView !== "home" && activeView !== "dashboard" && (
+            <button className="btn-ghost" onClick={onHome}>Home</button>
+          )}
           <button className={`btn-ghost ${activeView === "about" ? "bg-blue-50 text-rajo-primary" : ""}`} onClick={onAbout}>
             About
           </button>
           {isSignedIn ? (
-            <>
-              <button className="btn-ghost" onClick={onDashboard}>Dashboard</button>
-              <button className="btn-ghost" onClick={onLogout}>Sign Out</button>
-            </>
+            <button className="btn-ghost" onClick={onLogout}>Sign Out</button>
           ) : (
             <button className="btn-ghost" onClick={onSignIn}>Sign In</button>
           )}
@@ -312,116 +336,133 @@ function TopBar({
 }
 
 function AboutPage({ onStart }: { onStart: () => void }) {
-  const reasons = [
-    "Many existing AI voice systems struggle with Somali pronunciation, accent, and natural expression.",
-    "Somali speakers deserve voice assistants, educational tools, audiobooks, navigation systems, and accessibility tools that truly understand them.",
-    "High-quality speech data should be collected with consent, transparency, and respect for contributors.",
-  ];
-  const steps = [
-    "Contributors read short everyday Somali prompts.",
-    "Voice recordings are reviewed for quality.",
-    "Data trains TTS and ASR AI models.",
-    "Models become available to developers, researchers, startups, and the Somali community.",
-  ];
-  const commitments = [
-    ["Consent First", "Every recording begins with clear permission from the contributor."],
-    ["Privacy", "Contributor data is handled carefully and used only for the stated mission."],
-    ["Transparency", "We keep the collection process understandable and honest."],
-    ["Community Ownership", "Somali speakers should help shape Somali voice technology."],
-    ["Diversity", "We value dialects, accents, genders, regions, and speaking styles."],
-  ];
-
   return (
-    <div className="bg-slate-50">
+    <div>
+      {/* ── SECTION 1: HERO ── */}
       <section className="relative overflow-hidden bg-white px-5 py-20 sm:py-28">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(70,126,211,0.16),transparent_42%)]" />
-        <div className="absolute inset-x-0 top-20 mx-auto flex max-w-4xl items-end justify-center gap-1.5 opacity-15">
-          {Array.from({ length: 27 }).map((_, index) => (
-            <span
-              className="w-2 rounded-full bg-[#467ED3]"
-              key={index}
-              style={{ height: `${24 + Math.abs(13 - index) * 6}px` }}
-            />
-          ))}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-blue-50/70 to-white" />
+        {/* Waveform — logo pattern scaled up, low-opacity decorative background */}
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-center" aria-hidden="true">
+          <BrandWaveform className="w-full max-w-2xl" opacity={0.07} />
         </div>
         <div className="relative mx-auto max-w-5xl text-center">
-          <p className="text-sm font-black uppercase tracking-[0.22em] text-[#467ED3]">
-            ABOUT RAJO AI
-          </p>
+          <p className="text-sm font-black uppercase tracking-[0.22em] text-[#467ED3]">ABOUT RAJO AI</p>
           <h1 className="mx-auto mt-6 max-w-4xl text-5xl font-black leading-tight text-slate-950 sm:text-7xl">
             Building the future of Somali voice AI.
           </h1>
           <p className="mx-auto mt-6 max-w-3xl text-xl leading-9 text-slate-600">
-            An open initiative dedicated to ethical, high-quality Somali speech technology for everyone.
+            An open initiative dedicated to ethical, high-quality Somali speech technology — for everyone.
+          </p>
+          <p className="mt-5 text-lg italic text-[#467ED3]">
+            U hiili luuqadaada hooyo adoo ku deeqaya codkaaga.
           </p>
         </div>
       </section>
 
-      <AboutSection title="RAJO AI">
-        <div className="about-panel space-y-5 text-lg leading-9 text-slate-700">
-          <p>RAJO AI is an open initiative dedicated to building high-quality, ethical Somali voice AI for everyone.</p>
-          <p>We believe every language deserves to thrive in the age of artificial intelligence. Somali is spoken by over 25 million people worldwide, yet it remains severely underrepresented in speech technology.</p>
-          <p>Our mission is to change that by creating the largest, most diverse, and ethically sourced Somali voice dataset.</p>
-        </div>
-      </AboutSection>
-
-      <AboutSection title="Why We Exist">
-        <div className="grid gap-4 md:grid-cols-3">
-          {reasons.map((reason, index) => (
-            <article className="about-panel transition hover:-translate-y-1 hover:border-blue-100 hover:shadow-lg" key={reason}>
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#467ED3]/10 text-sm font-black text-[#467ED3]">
-                {index + 1}
+      {/* ── SECTION 2: WHY WE EXIST ── */}
+      <section className="bg-white px-5 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="mb-8 text-3xl font-black text-slate-950 sm:text-4xl">Why we exist</h2>
+          <div className="grid gap-4 md:grid-cols-3">
+            <article className="about-panel transition hover:-translate-y-1 hover:border-blue-100 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="#467ED3" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.5a4 4 0 0 0 4-4v-7a4 4 0 1 0-8 0v7a4 4 0 0 0 4 4Z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 11.5v3a7 7 0 0 0 14 0v-3M12 21v-2.5" />
+                </svg>
               </div>
-              <p className="mt-6 text-base font-semibold leading-7 text-slate-700">{reason}</p>
+              <h3 className="mt-5 text-xl font-black text-slate-950">Built for Somali</h3>
+              <p className="mt-3 text-base leading-7 text-slate-600">Most AI voices struggle with Somali pronunciation and accent.</p>
             </article>
-          ))}
-        </div>
-      </AboutSection>
-
-      <AboutSection title="How It Works">
-        <div className="space-y-3">
-          {steps.map((step, index) => (
-            <div className="about-panel flex gap-4 p-5" key={step}>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#467ED3] text-sm font-black text-white">
-                {index + 1}
-              </span>
-              <p className="pt-1 text-lg font-semibold leading-8 text-slate-700">{step}</p>
-            </div>
-          ))}
-        </div>
-      </AboutSection>
-
-      <AboutSection title="Our Commitment">
-        <div className="grid gap-4 md:grid-cols-2">
-          {commitments.map(([title, text]) => (
-            <article className="about-panel" key={title}>
-              <h3 className="text-xl font-black text-slate-950">{title}</h3>
-              <p className="mt-3 leading-7 text-slate-600">{text}</p>
+            <article className="about-panel transition hover:-translate-y-1 hover:border-blue-100 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="#467ED3" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a9 9 0 0 1 18 0" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9v5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 9v5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9" />
+                </svg>
+              </div>
+              <h3 className="mt-5 text-xl font-black text-slate-950">Tools we deserve</h3>
+              <p className="mt-3 text-base leading-7 text-slate-600">Voice assistants, audiobooks, and accessibility tools that understand us.</p>
             </article>
-          ))}
-        </div>
-      </AboutSection>
-
-      <AboutSection title="Who We Are">
-        <div className="about-panel">
-          <p className="text-lg leading-9 text-slate-700">
-            RAJO AI was founded by Jama Ilyas Abdisalan, a Somali builder passionate about technology and language preservation.
-          </p>
-          <p className="mt-5 text-lg leading-9 text-slate-700">
-            We are a growing team of engineers, linguists, and community members working together to close the digital language gap for Somali people everywhere.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-2">
-            {"Mogadishu • Hargeisa • Nairobi • Kampala • London • Minneapolis"
-              .split(" • ")
-              .map((city) => (
-                <span className="rounded-full bg-slate-100 px-4 py-2 text-sm font-black text-slate-600" key={city}>
-                  {city}
-                </span>
-              ))}
+            <article className="about-panel transition hover:-translate-y-1 hover:border-blue-100 hover:shadow-lg">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="#467ED3" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
+                </svg>
+              </div>
+              <h3 className="mt-5 text-xl font-black text-slate-950">Ethics first</h3>
+              <p className="mt-3 text-base leading-7 text-slate-600">Data collected with consent, transparency, and respect.</p>
+            </article>
           </div>
         </div>
-      </AboutSection>
+      </section>
 
+      {/* ── SECTION 3: HOW IT WORKS ── */}
+      <section className="bg-[#FAFBFD] px-5 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="mb-8 text-3xl font-black text-slate-950 sm:text-4xl">How it works</h2>
+          <div className="space-y-3">
+            {[
+              "Contributors read short everyday Somali prompts",
+              "Recordings are reviewed for quality",
+              "Data trains Somali TTS and ASR models",
+              "Models released to the Somali community",
+            ].map((step, i) => (
+              <div className="about-panel flex items-center gap-4 p-5" key={step}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#467ED3] text-sm font-black text-white">
+                  {i + 1}
+                </span>
+                <p className="text-lg font-semibold text-slate-700">{step}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 4: OUR COMMITMENT ── */}
+      <section className="bg-white px-5 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="mb-8 text-3xl font-black text-slate-950 sm:text-4xl">Our commitment</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[
+              ["Consent first", "Every recording begins with clear permission from the contributor."],
+              ["Privacy", "Contributor data is handled carefully and used only for the stated mission."],
+              ["Community ownership", "Somali speakers should help shape Somali voice technology."],
+              ["Diversity", "All dialects, accents, genders, regions, and speaking styles welcome."],
+            ].map(([title, text]) => (
+              <article className="about-panel" key={title}>
+                <h3 className="text-xl font-black text-slate-950">{title}</h3>
+                <p className="mt-3 leading-7 text-slate-600">{text}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 5: WHO WE ARE ── */}
+      <section className="bg-[#FAFBFD] px-5 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="mb-8 text-3xl font-black text-slate-950 sm:text-4xl">Who we are</h2>
+          <div className="about-panel space-y-6">
+            <p className="text-lg leading-9 text-slate-700">
+              RAJO AI was founded by Jama Ilyas Abdisalan, a Somali software engineer and AI specialist. AI today can speak Somali — but it doesn't sound Somali. The pronunciation is wrong, the rhythm is foreign. He started RAJO to fix that. Our language deserves to be heard correctly by every machine in the world.
+            </p>
+            <blockquote className="border-l-4 border-[#467ED3] pl-5">
+              <p className="text-lg italic text-slate-800">
+                "Tallaabo yar oo wax wayn u ah mustaqbalka Soomaalida."
+              </p>
+              <p className="mt-2 text-sm text-slate-500">A small step — a giant one for the Somali future.</p>
+            </blockquote>
+            <p className="text-lg font-semibold text-slate-700">
+              Built for Somalis everywhere —{" "}
+              <em className="text-[#467ED3]">Soomaali meel kasta oo ay joogto.</em>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── SECTION 6: CTA ── */}
       <section className="px-5 py-20">
         <div className="mx-auto max-w-4xl rounded-[2rem] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-blue-50 px-6 py-16 text-center shadow-soft sm:px-10">
           <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#467ED3] text-white">
@@ -433,8 +474,11 @@ function AboutPage({ onStart }: { onStart: () => void }) {
           <h2 className="text-4xl font-black text-slate-950 sm:text-5xl">
             Ready to make history with your voice?
           </h2>
+          <p className="mt-4 text-lg italic text-[#467ED3]">
+            Ku deeq codkaaga si aad uga qayb qaadato horumarinta luuqadda Soomaaliga.
+          </p>
           <button className="btn-primary mt-8 bg-[#467ED3] text-base" onClick={onStart}>
-            Start Donating Your Voice →
+            Ku deeq codkaaga →
           </button>
         </div>
       </section>
@@ -453,10 +497,10 @@ function AboutSection({ children, title }: { children: ReactNode; title: string 
   );
 }
 
-function HomePage({ onSignIn, onStart }: { onSignIn: () => void; onStart: () => void }) {
+function HomePage({ onStart }: { onStart: () => void }) {
   return (
     <section className="mx-auto flex min-h-[calc(100vh-73px)] max-w-4xl flex-col items-center justify-center px-5 py-12 text-center">
-      <img alt="RAJO AI" className="mb-8 h-28 w-auto object-contain sm:h-36" src="/logo%20rajo%20ai.png" />
+      <BrandWaveform className="mb-6 h-12 w-auto sm:h-14" opacity={0.7} />
       <h1 className="text-4xl font-black tracking-normal text-slate-950 sm:text-6xl">
         Donate your Somali voice
       </h1>
@@ -465,7 +509,6 @@ function HomePage({ onSignIn, onStart }: { onSignIn: () => void; onStart: () => 
       </p>
       <div className="mt-9 flex w-full max-w-md flex-col gap-3 sm:flex-row">
         <button className="btn-primary flex-1 text-base" onClick={onStart}>Start Recording</button>
-        <button className="btn-secondary flex-1 text-base" onClick={onSignIn}>Sign In</button>
       </div>
       <p className="mt-7 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
         Your voice is collected only with consent
@@ -541,7 +584,27 @@ function AuthPage({
                 </select>
               </label>
             </div>
-            <TextField label="Country, city" placeholder="Somalia, Mogadishu" value={formData.countryCity} onChange={(value) => onFormChange({ ...formData, countryCity: value })} />
+            <label className="block">
+              <span className="field-label">Country</span>
+              <select
+                className="field"
+                value={formData.country}
+                onChange={(event) => onFormChange({ ...formData, country: event.target.value })}
+              >
+                <option value="">Select your country</option>
+                <optgroup label="Common">
+                  {PRIORITY_COUNTRIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="All Countries">
+                  {OTHER_COUNTRIES.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
+            <TextField label="City" placeholder="e.g. Mogadishu" value={formData.city} onChange={(value) => onFormChange({ ...formData, city: value })} />
             <label className="block">
               <span className="field-label">Dialect</span>
               <select
@@ -601,13 +664,11 @@ function Dashboard({
   prompts,
   stats,
   user,
-  onManagePrompts,
   onRecord,
 }: {
   prompts: VoicePrompt[];
   stats: { total: number; minutes: number; approved: number; pending: number };
   user: RegisteredUser;
-  onManagePrompts: () => void;
   onRecord: () => void;
 }) {
   const cards = [
@@ -621,12 +682,10 @@ function Dashboard({
     <section className="mx-auto max-w-6xl px-5 py-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase tracking-wide text-blue-700">Recording dashboard</p>
-          <h1 className="mt-2 text-3xl font-black text-slate-950 sm:text-4xl">Welcome, {firstName(user.fullName)}</h1>
+          <h1 className="text-3xl font-black text-slate-950 sm:text-4xl">Welcome, {firstName(user.fullName)}</h1>
           <p className="mt-2 text-slate-600">{prompts.length} Somali prompts are ready.</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <button className="btn-secondary" onClick={onManagePrompts}>Add New Prompt / Word</button>
           <button className="btn-primary" onClick={onRecord}>Record New Voice</button>
         </div>
       </div>
@@ -665,14 +724,10 @@ function RecordingPage({
   const [audioUrl, setAudioUrl] = useState("");
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [duration, setDuration] = useState(0);
-  const [metadata, setMetadata] = useState<RecordingMetadata>({
-    ageRange: ageToRange(user.age),
-    country: user.country,
-    city: user.city,
+  const [metadata, setMetadata] = useState({
     deviceType: "Phone",
     backgroundNoise: "Quiet",
     speakingSpeed: "Normal",
-    consent: false,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -734,18 +789,18 @@ function RecordingPage({
 
   async function submitRecording() {
     if (!audioBlob || !prompt) return;
-    if (!metadata.consent) {
-      setError("Please confirm consent before submitting this recording.");
-      return;
-    }
     setBusy(true);
     setError("");
 
     try {
       await onSubmitRecording(prompt, audioBlob, {
-        ...metadata,
-        country: metadata.country || user.country,
-        city: metadata.city || user.city,
+        ageRange: ageToRange(user.age),
+        country: user.country,
+        city: user.city,
+        deviceType: metadata.deviceType,
+        backgroundNoise: metadata.backgroundNoise,
+        speakingSpeed: metadata.speakingSpeed,
+        consent: true,
       });
       resetRecording();
       goToNext();
@@ -807,35 +862,30 @@ function RecordingPage({
 
           <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
             <h2 className="text-lg font-black text-slate-950">Recording details</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <SelectField label="Age Range" value={metadata.ageRange} onChange={(value) => setMetadata({ ...metadata, ageRange: value })} options={["18-24", "25-34", "35-44", "45+"]} />
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <SelectField label="Device Type" value={metadata.deviceType} onChange={(value) => setMetadata({ ...metadata, deviceType: value })} options={["Phone", "Laptop", "External Microphone"]} />
               <SelectField label="Background Noise" value={metadata.backgroundNoise} onChange={(value) => setMetadata({ ...metadata, backgroundNoise: value })} options={["Quiet", "Medium", "Noisy"]} />
               <SelectField label="Speaking Speed" value={metadata.speakingSpeed} onChange={(value) => setMetadata({ ...metadata, speakingSpeed: value })} options={["Slow", "Normal", "Fast"]} />
-              {user.country ? (
-                <ReadonlyField label="Country" value={user.country} />
-              ) : (
-                <TextField label="Country" value={metadata.country} onChange={(value) => setMetadata({ ...metadata, country: value })} />
-              )}
-              {user.city ? (
-                <ReadonlyField label="City" value={user.city} />
-              ) : (
-                <TextField label="City" value={metadata.city} onChange={(value) => setMetadata({ ...metadata, city: value })} />
-              )}
             </div>
-            <label className="mt-4 flex gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-slate-700">
-              <input checked={metadata.consent} className="mt-1 h-4 w-4" required type="checkbox" onChange={(event) => setMetadata({ ...metadata, consent: event.target.checked })} />
-              I agree that my recordings can be used for Somali AI research and voice technology.
-            </label>
           </div>
 
-          <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <button className="btn-primary" disabled={busy || recorderState === "recording"} onClick={startRecording}>Start Recording</button>
-            <button className="btn-danger" disabled={recorderState !== "recording"} onClick={stopRecording}>Stop Recording</button>
-            <button className="btn-secondary" disabled={!audioUrl} onClick={() => audioRef.current?.play()}>Play Recording</button>
-            <button className="btn-primary" disabled={!audioBlob || busy} onClick={submitRecording}>{busy ? "Submitting..." : "Submit Recording"}</button>
-            <button className="btn-secondary" disabled={recorderState === "recording"} onClick={resetRecording}>Re-record</button>
-            <button className="btn-secondary" disabled={recorderState === "recording"} onClick={skipPrompt}>Skip Prompt</button>
+          <div className="mt-7 flex flex-wrap gap-3">
+            {recorderState === "idle" && (
+              <>
+                <button className="btn-primary" onClick={startRecording}>Start Recording</button>
+                <button className="btn-secondary" onClick={skipPrompt}>Skip Prompt</button>
+              </>
+            )}
+            {recorderState === "recording" && (
+              <button className="btn-danger" onClick={stopRecording}>Stop Recording</button>
+            )}
+            {recorderState === "recorded" && (
+              <>
+                <button className="btn-secondary" onClick={() => audioRef.current?.play()}>Play Recording</button>
+                <button className="btn-secondary" onClick={resetRecording}>Re-record</button>
+                <button className="btn-primary" disabled={busy} onClick={submitRecording}>{busy ? "Submitting..." : "Submit Recording"}</button>
+              </>
+            )}
           </div>
 
           {error && <p className="mt-5 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}

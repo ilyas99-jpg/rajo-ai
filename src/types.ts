@@ -6,7 +6,8 @@ export type RegistrationFormData = {
   password: string;
   age: string;
   gender: Gender | "";
-  countryCity: string;
+  country: string;
+  city: string;
   dialect: string;
   dialectOther: string;
   consent: boolean;

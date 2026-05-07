@@ -5,19 +5,9 @@ import type {
   VoiceSubmission,
 } from "../types";
 
-const splitCountryCity = (value: string) => {
-  const [country = "", ...cityParts] = value.split(",").map((part) => part.trim());
-
-  return {
-    country,
-    city: cityParts.join(", "),
-  };
-};
-
 export const createRegisteredUser = (
   formData: RegistrationFormData,
 ): RegisteredUser => {
-  const { country, city } = splitCountryCity(formData.countryCity);
   const userId = crypto.randomUUID();
   const dialect =
     formData.dialect === "Other" ? formData.dialectOther.trim() : formData.dialect.trim();
@@ -32,8 +22,8 @@ export const createRegisteredUser = (
     email: formData.email.trim().toLowerCase(),
     age: Number(formData.age),
     gender: formData.gender,
-    country,
-    city,
+    country: formData.country.trim(),
+    city: formData.city.trim(),
     dialect,
     consent: formData.consent,
     voiceProfileId: `voice-profile-${userId}`,
