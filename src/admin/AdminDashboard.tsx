@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   deleteRecording,
+  exportDatasetCsv,
   fetchAdminDashboardData,
   updateRecordingQualityScore,
   updateRecordingStatus,
@@ -53,6 +54,9 @@ export function AdminDashboard() {
   const [genderFilter, setGenderFilter] = useState("");
   const [updatingId, setUpdatingId] = useState("");
   const [expandedDonors, setExpandedDonors] = useState<Set<string>>(new Set());
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [includeSignedUrls, setIncludeSignedUrls] = useState(false);
 
   // Resolve Supabase Auth session on mount and keep it in sync.
   useEffect(() => {
@@ -257,6 +261,18 @@ export function AdminDashboard() {
     }
   };
 
+  const handleExport = async () => {
+    setExportLoading(true);
+    setExportError("");
+    try {
+      await exportDatasetCsv({ includeSignedUrls });
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed.");
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   const toggleDonor = (donorId: string) => {
     setExpandedDonors((current) => {
       const next = new Set(current);
@@ -369,6 +385,13 @@ export function AdminDashboard() {
 
         <StatsGrid donors={donors} recordings={recordings} totalDurationSeconds={totalDurationSeconds} />
         <ProgressCard progressPercent={progressPercent} totalHours={totalHours} />
+        <ExportCard
+          error={exportError}
+          includeSignedUrls={includeSignedUrls}
+          loading={exportLoading}
+          onExport={() => void handleExport()}
+          onToggleSignedUrls={setIncludeSignedUrls}
+        />
 
         <section className="rounded-3xl border border-blue-100 bg-white p-4 shadow-soft">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -761,6 +784,55 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="text-[10px] font-black uppercase tracking-wide text-blue-700">{label}</p>
       <p className="mt-1 text-sm font-black text-slate-950">{value}</p>
     </div>
+  );
+}
+
+function ExportCard({
+  error,
+  includeSignedUrls,
+  loading,
+  onExport,
+  onToggleSignedUrls,
+}: {
+  error: string;
+  includeSignedUrls: boolean;
+  loading: boolean;
+  onExport: () => void;
+  onToggleSignedUrls: (value: boolean) => void;
+}) {
+  return (
+    <section className="rounded-3xl border border-blue-100 bg-white px-4 py-3 shadow-soft">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide text-blue-700">Dataset Export</p>
+          <p className="mt-1 text-base font-black text-slate-950">Export approved recordings as CSV</p>
+          <p className="mt-0.5 text-xs font-semibold text-slate-500">
+            Includes all approved rows with metadata. No personal data beyond gender, dialect, country, and city.
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-black text-slate-700">
+            <input
+              checked={includeSignedUrls}
+              className="h-4 w-4 accent-blue-600"
+              type="checkbox"
+              onChange={(e) => onToggleSignedUrls(e.target.checked)}
+            />
+            Include 1-hr signed download URLs
+          </label>
+          <button
+            className="admin-action admin-action-primary"
+            disabled={loading}
+            onClick={onExport}
+          >
+            {loading ? "Exporting..." : "Export CSV"}
+          </button>
+        </div>
+      </div>
+      {error && (
+        <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">{error}</p>
+      )}
+    </section>
   );
 }
 

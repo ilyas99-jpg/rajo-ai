@@ -252,3 +252,51 @@ BEGIN
       );
   END IF;
 END $$;
+
+-- ── Public dataset statistics RPC ────────────────────────────
+-- Returns aggregate counts only — no individual rows, no PII.
+-- SECURITY DEFINER bypasses RLS so anon users can call it safely.
+-- For existing projects run: supabase/public_stats_migration.sql
+
+CREATE OR REPLACE FUNCTION get_public_stats()
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT jsonb_build_object(
+    'total_recordings',
+    COUNT(*)::int,
+
+    'approved_recordings',
+    COUNT(*) FILTER (WHERE status = 'approved')::int,
+
+    'approved_duration_seconds',
+    COALESCE(
+      SUM(duration_seconds) FILTER (WHERE status = 'approved'),
+      0
+    )::numeric,
+
+    'total_contributors',
+    COUNT(DISTINCT donor_id) FILTER (WHERE donor_id IS NOT NULL)::int,
+
+    'dialects_covered',
+    COUNT(DISTINCT dialect) FILTER (
+      WHERE status = 'approved'
+        AND dialect IS NOT NULL
+        AND dialect <> ''
+    )::int,
+
+    'countries_covered',
+    COUNT(DISTINCT country) FILTER (
+      WHERE status = 'approved'
+        AND country IS NOT NULL
+        AND country <> ''
+    )::int
+  )
+  FROM voice_recordings;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_public_stats() TO anon;
+GRANT EXECUTE ON FUNCTION get_public_stats() TO authenticated;

@@ -164,3 +164,145 @@ export async function deleteRecording(recording: AdminRecording): Promise<void> 
 
   if (error) throw new Error(`Could not delete recording row: ${error.message}`);
 }
+
+// ── Dataset CSV export ────────────────────────────────────────
+
+export type ExportOptions = {
+  includeSignedUrls: boolean;
+};
+
+// Standard CSV quoting: wrap in double-quotes if the value contains
+// a comma, double-quote, or newline; escape inner double-quotes as "".
+function escapeCsvField(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "";
+  const str = String(value);
+  return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+}
+
+type ExportRow = {
+  id: string;
+  donor_id: string;
+  audio_path: string | null;
+  sentence_id: string;
+  sentence_text: string;
+  dialect: string | null;
+  gender: string | null;
+  age_range: string | null;
+  country: string | null;
+  city: string | null;
+  duration_seconds: number | null;
+  quality_score: number | null;
+  status: string;
+  created_at: string;
+  voice_donors:
+    | { gender: string | null; dialect: string | null; country: string | null; city: string | null }
+    | Array<{ gender: string | null; dialect: string | null; country: string | null; city: string | null }>
+    | null;
+};
+
+export async function exportDatasetCsv(options: ExportOptions): Promise<void> {
+  const sb = getSupabase();
+
+  const { data, error } = await sb
+    .from("voice_recordings")
+    .select(`
+      id,
+      donor_id,
+      audio_path,
+      sentence_id,
+      sentence_text,
+      dialect,
+      gender,
+      age_range,
+      country,
+      city,
+      duration_seconds,
+      quality_score,
+      status,
+      created_at,
+      voice_donors ( gender, dialect, country, city )
+    `)
+    .eq("status", "approved")
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(`Export failed: ${error.message}`);
+
+  const rows = (data ?? []) as ExportRow[];
+
+  // Batch-generate signed download URLs (500 paths per request).
+  const signedUrlMap = new Map<string, string>();
+
+  if (options.includeSignedUrls && rows.length > 0) {
+    const paths = rows
+      .map((r) => (r.audio_path ? normalizePath(r.audio_path) : ""))
+      .filter(Boolean);
+
+    const BATCH = 500;
+    for (let i = 0; i < paths.length; i += BATCH) {
+      const { data: signed } = await sb.storage
+        .from("voice-recordings")
+        .createSignedUrls(paths.slice(i, i + BATCH), 3600);
+
+      if (signed) {
+        for (const item of signed) {
+          if (item.signedUrl && item.path) signedUrlMap.set(item.path, item.signedUrl);
+        }
+      }
+    }
+  }
+
+  const headers = [
+    "recording_id",
+    "donor_id",
+    "audio_path",
+    "sentence_id",
+    "sentence_text",
+    "language",
+    "dialect",
+    "gender",
+    "age_range",
+    "country",
+    "city",
+    "duration_seconds",
+    "quality_score",
+    "status",
+    "created_at",
+    ...(options.includeSignedUrls ? ["signed_download_url_1hr"] : []),
+  ];
+
+  const csvLines = rows.map((r) => {
+    const donor = Array.isArray(r.voice_donors) ? (r.voice_donors[0] ?? null) : r.voice_donors;
+    const cleanPath = r.audio_path ? normalizePath(r.audio_path) : "";
+    const fields: (string | number | null | undefined)[] = [
+      r.id,
+      r.donor_id,
+      r.audio_path ?? "",
+      r.sentence_id,
+      r.sentence_text,
+      "Somali",
+      r.dialect   || donor?.dialect   || "",
+      r.gender    || donor?.gender    || "",
+      r.age_range ?? "",
+      r.country   || donor?.country   || "",
+      r.city      || donor?.city      || "",
+      r.duration_seconds ?? "",
+      r.quality_score    ?? "",
+      r.status,
+      r.created_at,
+      ...(options.includeSignedUrls ? [signedUrlMap.get(cleanPath) ?? ""] : []),
+    ];
+    return fields.map(escapeCsvField).join(",");
+  });
+
+  // UTF-8 BOM (﻿) ensures Excel opens Somali text correctly.
+  const csv = "﻿" + [headers.join(","), ...csvLines].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `rajo-ai-dataset-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

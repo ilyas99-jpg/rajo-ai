@@ -4,12 +4,14 @@ import { BrandWaveform } from "./components/Brand";
 import { voicePrompts as starterPrompts } from "./data/prompts";
 import {
   fetchDonorProgress,
+  fetchPublicStats,
   getCurrentSessionProfile,
   loginWithPassword,
   logoutUser,
   registerAndCreateProfile,
   uploadAndSaveRecording,
 } from "./lib/supabaseService";
+import type { PublicStats } from "./lib/supabaseService";
 import type { RecordingHistoryItem, RecordingMetadata, RegisteredUser, RegistrationFormData, VoicePrompt } from "./types";
 import { createRegisteredUser } from "./utils/submissions";
 
@@ -571,6 +573,8 @@ function HomePage({ onAbout, onStart }: { onAbout: () => void; onStart: () => vo
         </div>
       </section>
 
+      <DatasetStatsSection />
+
       <section className="border-y border-slate-200 bg-slate-950 px-5 py-10 text-white">
         <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-[0.85fr_1.15fr] md:items-center">
           <div>
@@ -602,6 +606,78 @@ function HomePage({ onAbout, onStart }: { onAbout: () => void; onStart: () => vo
         </div>
       </section>
     </div>
+  );
+}
+
+function DatasetStatsSection() {
+  const [stats, setStats] = useState<PublicStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchPublicStats()
+      .then(setStats)
+      .catch(() => setStats(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (!loading && !stats) return null;
+
+  const items: { label: string; value: string; sub?: string }[] = stats
+    ? [
+        { label: "Voice Recordings", value: stats.total_recordings.toLocaleString() },
+        { label: "Approved Recordings", value: stats.approved_recordings.toLocaleString() },
+        {
+          label: "Approved Audio",
+          value: (stats.approved_duration_seconds / 3600).toFixed(1),
+          sub: "hours",
+        },
+        { label: "Contributors", value: stats.total_contributors.toLocaleString() },
+        { label: "Dialects", value: stats.dialects_covered.toLocaleString() },
+        { label: "Countries", value: stats.countries_covered.toLocaleString() },
+      ]
+    : Array.from({ length: 6 }, (_, i) => ({ label: "", value: "", _skeleton: true } as { label: string; value: string; _skeleton?: boolean }));
+
+  return (
+    <section className="bg-white px-5 py-12 sm:py-16">
+      <div className="mx-auto max-w-6xl">
+        <div className="mb-8 text-center">
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-rajo-primary">
+            Dataset progress
+          </p>
+          <h2 className="mt-2 text-3xl font-black text-slate-950 sm:text-4xl">
+            Built together, one voice at a time.
+          </h2>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {items.map((item, i) =>
+            (item as { _skeleton?: boolean })._skeleton ? (
+              <div
+                key={i}
+                className="animate-pulse rounded-2xl border border-slate-100 bg-slate-50 p-5"
+              >
+                <div className="h-8 w-2/3 rounded-lg bg-slate-200" />
+                <div className="mt-2 h-3 w-full rounded bg-slate-100" />
+              </div>
+            ) : (
+              <article
+                key={item.label}
+                className="rounded-2xl border border-blue-50 bg-blue-50/60 p-5 text-center"
+              >
+                <p className="text-3xl font-black text-slate-950 sm:text-4xl">
+                  {item.value}
+                  {item.sub && (
+                    <span className="ml-1 text-base font-bold text-slate-500">{item.sub}</span>
+                  )}
+                </p>
+                <p className="mt-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                  {item.label}
+                </p>
+              </article>
+            ),
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

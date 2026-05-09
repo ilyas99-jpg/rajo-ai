@@ -348,3 +348,32 @@ function getAudioDurationSeconds(audioBlob: Blob): Promise<number | null> {
     audio.src = url;
   });
 }
+
+// ── Public dataset statistics ─────────────────────────────────
+// Calls the get_public_stats() Supabase RPC function which returns
+// aggregated counts only. No personal data is ever exposed.
+
+export type PublicStats = {
+  total_recordings: number;
+  approved_recordings: number;
+  approved_duration_seconds: number;
+  total_contributors: number;
+  dialects_covered: number;
+  countries_covered: number;
+};
+
+export async function fetchPublicStats(): Promise<PublicStats> {
+  const { data, error } = await getSupabase().rpc("get_public_stats");
+
+  if (error) throw new Error(`Could not load dataset stats: ${error.message}`);
+
+  const raw = data as Record<string, unknown>;
+  return {
+    total_recordings:          Number(raw?.total_recordings          ?? 0),
+    approved_recordings:       Number(raw?.approved_recordings       ?? 0),
+    approved_duration_seconds: Number(raw?.approved_duration_seconds ?? 0),
+    total_contributors:        Number(raw?.total_contributors        ?? 0),
+    dialects_covered:          Number(raw?.dialects_covered          ?? 0),
+    countries_covered:         Number(raw?.countries_covered         ?? 0),
+  };
+}
