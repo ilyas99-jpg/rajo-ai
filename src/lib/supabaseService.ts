@@ -280,15 +280,9 @@ export async function uploadAndSaveRecording(
     throw new Error("Audio upload failed: Supabase did not return a storage path.");
   }
 
-  const { data: urlData } = sb.storage
-    .from("voice-recordings")
-    .getPublicUrl(uploadData.path);
-
-  const audioUrl = urlData.publicUrl;
-
-  if (audioUrl.startsWith("blob:")) {
-    throw new Error("Audio save failed: refusing to store a temporary blob URL.");
-  }
+  // Bucket is private — store the storage path, not a public URL.
+  // Signed URLs are generated on demand by adminService.ts for playback.
+  const storagePath = uploadData.path;
 
   const { data: recordingData, error: dbError } = await sb
     .from("voice_recordings")
@@ -296,8 +290,8 @@ export async function uploadAndSaveRecording(
       donor_id: donorId,
       sentence_id: sentenceId,
       sentence_text: sentenceText,
-      audio_url: audioUrl,
-      audio_path: uploadData.path,
+      audio_url: storagePath,
+      audio_path: storagePath,
       duration_seconds: durationSeconds,
       dialect,
       gender,

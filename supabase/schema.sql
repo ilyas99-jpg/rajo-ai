@@ -200,63 +200,55 @@ BEGIN
 END $$;
 
 -- ── Storage bucket ───────────────────────────────────────────
--- Create the bucket manually in Supabase Dashboard → Storage,
--- name it exactly:  voice-recordings
--- Then add this storage policy in Dashboard → Storage → Policies:
---
---   Bucket: voice-recordings
---   Operation: INSERT
---   Role: anon
---   Policy: true
---
--- Or run via SQL:
+-- Bucket is PRIVATE. Audio files are never served via public URL.
+-- All playback uses signed URLs (1 hr TTL) generated server-side.
+-- For existing projects run: supabase/private_storage_migration.sql
 INSERT INTO storage.buckets (id, name, public)
-VALUES ('voice-recordings', 'voice-recordings', true)
-ON CONFLICT (id) DO NOTHING;
+VALUES ('voice-recordings', 'voice-recordings', false)
+ON CONFLICT (id) DO UPDATE SET public = false;
 
-CREATE POLICY "anon_upload_voice_recordings"
-  ON storage.objects FOR INSERT
-  TO anon
-  WITH CHECK (bucket_id = 'voice-recordings');
-
+-- Authenticated users can upload only to their own donor UUID subfolder.
+-- Path layout: <donor_uuid>/<sentence_id>-<timestamp>.<ext>
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = 'authenticated_upload_voice_recordings'
+      AND tablename  = 'objects'
+      AND policyname = 'authenticated_upload_own_recordings'
   ) THEN
-    CREATE POLICY "authenticated_upload_voice_recordings"
+    CREATE POLICY "authenticated_upload_own_recordings"
       ON storage.objects FOR INSERT
       TO authenticated
-      WITH CHECK (bucket_id = 'voice-recordings');
+      WITH CHECK (
+        bucket_id = 'voice-recordings'
+        AND (storage.foldername(name))[1] IN (
+          SELECT id::text FROM voice_donors WHERE auth_user_id = auth.uid()
+        )
+      );
   END IF;
 END $$;
 
+-- Authenticated users can read files in their own folder.
+-- Admin read policy (auth.email() = 'jamailyaz2024@gmail.com') is
+-- created by secure_admin_policies.sql. Supabase ORs SELECT policies,
+-- so: admin sees all objects, regular users see only their own.
 DO $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = 'anon_read_voice_recordings_mvp_admin'
+      AND tablename  = 'objects'
+      AND policyname = 'authenticated_read_own_recordings'
   ) THEN
-    CREATE POLICY "anon_read_voice_recordings_mvp_admin"
+    CREATE POLICY "authenticated_read_own_recordings"
       ON storage.objects FOR SELECT
-      TO anon
-      USING (bucket_id = 'voice-recordings');
-  END IF;
-
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_policies
-    WHERE schemaname = 'storage'
-      AND tablename = 'objects'
-      AND policyname = 'anon_delete_voice_recordings_mvp_admin'
-  ) THEN
-    CREATE POLICY "anon_delete_voice_recordings_mvp_admin"
-      ON storage.objects FOR DELETE
-      TO anon
-      USING (bucket_id = 'voice-recordings');
+      TO authenticated
+      USING (
+        bucket_id = 'voice-recordings'
+        AND (storage.foldername(name))[1] IN (
+          SELECT id::text FROM voice_donors WHERE auth_user_id = auth.uid()
+        )
+      );
   END IF;
 END $$;

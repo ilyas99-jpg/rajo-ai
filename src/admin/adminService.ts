@@ -6,6 +6,14 @@ type RecordingRow = Omit<AdminRecording, "donor" | "signed_audio_url" | "audio_e
   voice_donors: DonorRelation | DonorRelation[] | null;
 };
 
+// Signed URLs expire after 1 hour. The admin can click "Refresh Data" to renew them.
+const SIGNED_URL_EXPIRY_SECONDS = 3600;
+
+// Strip any leading slash or bucket prefix that may appear in legacy rows.
+function normalizePath(rawPath: string): string {
+  return rawPath.replace(/^\/+/, "").replace(/^voice-recordings\//, "");
+}
+
 export async function fetchAdminDashboardData(): Promise<AdminDashboardData> {
   const sb = getSupabase();
 
@@ -59,21 +67,49 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardData> {
     throw new Error(`Could not load recordings: ${recordingsResult.error.message}`);
   }
 
-  const recordings = await Promise.all(
-    ((recordingsResult.data ?? []) as unknown as RecordingRow[]).map(async (recording) => {
-      const playback = await getPlaybackUrl(recording.audio_path, recording.audio_url);
+  const rawRecordings = (recordingsResult.data ?? []) as unknown as RecordingRow[];
 
-      return {
-        ...recording,
-        audio_url: playback.url,
-        audio_error: playback.error,
-        donor: Array.isArray(recording.voice_donors)
-          ? recording.voice_donors[0] ?? null
-          : recording.voice_donors,
-        signed_audio_url: playback.url,
-      };
-    }),
-  );
+  // Collect every unique, non-empty audio path to sign in one batch request.
+  const paths = rawRecordings
+    .map((r) => (r.audio_path ? normalizePath(r.audio_path) : ""))
+    .filter(Boolean);
+
+  // One round-trip to Supabase Storage → signed URLs for all recordings.
+  const signedUrlMap = new Map<string, string>();
+
+  if (paths.length > 0) {
+    const { data: signedUrls } = await sb.storage
+      .from("voice-recordings")
+      .createSignedUrls(paths, SIGNED_URL_EXPIRY_SECONDS);
+
+    if (signedUrls) {
+      for (const item of signedUrls) {
+        if (item.signedUrl && item.path) {
+          signedUrlMap.set(item.path, item.signedUrl);
+        }
+      }
+    }
+  }
+
+  const recordings: AdminRecording[] = rawRecordings.map((recording) => {
+    const cleanPath = recording.audio_path ? normalizePath(recording.audio_path) : "";
+    const signedUrl = signedUrlMap.get(cleanPath) ?? "";
+    const audioError = !recording.audio_path
+      ? "Recording file missing"
+      : !signedUrl
+        ? "Could not generate audio URL"
+        : "";
+
+    return {
+      ...recording,
+      audio_url: signedUrl,
+      audio_error: audioError,
+      donor: Array.isArray(recording.voice_donors)
+        ? recording.voice_donors[0] ?? null
+        : recording.voice_donors,
+      signed_audio_url: signedUrl,
+    };
+  });
 
   return {
     donors: (donorsResult.data ?? []) as AdminDonor[],
@@ -114,9 +150,10 @@ export async function deleteRecording(recording: AdminRecording): Promise<void> 
   const sb = getSupabase();
 
   if (recording.audio_path) {
+    const cleanPath = normalizePath(recording.audio_path);
     const { error: storageError } = await sb.storage
       .from("voice-recordings")
-      .remove([recording.audio_path]);
+      .remove([cleanPath]);
 
     if (storageError) {
       throw new Error(`Could not delete audio file: ${storageError.message}`);
@@ -126,25 +163,4 @@ export async function deleteRecording(recording: AdminRecording): Promise<void> 
   const { error } = await sb.from("voice_recordings").delete().eq("id", recording.id);
 
   if (error) throw new Error(`Could not delete recording row: ${error.message}`);
-}
-async function getPlaybackUrl(
-  audioPath: string,
-  savedAudioUrl: string,
-): Promise<{ url: string; error: string }> {
-  if (!audioPath) {
-    return { url: "", error: "Recording file missing" };
-  }
-
-  const sb = getSupabase();
-
-  const path = audioPath.replace(/^\/+/, "").replace(/^voice-recordings\//, "");
-
-  const { data } = sb.storage
-    .from("voice-recordings")
-    .getPublicUrl(path);
-
-  return {
-    url: data.publicUrl,
-    error: "",
-  };
 }
