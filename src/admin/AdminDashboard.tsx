@@ -1,14 +1,20 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { Session } from "@supabase/supabase-js";
 import {
   deleteRecording,
   fetchAdminDashboardData,
   updateRecordingQualityScore,
   updateRecordingStatus,
 } from "./adminService";
+import { getSupabase } from "../lib/supabase";
 import type { AdminDonor, AdminRecording, ReviewStatus } from "./adminTypes";
 
-const ADMIN_SESSION_KEY = "rajo-admin-session";
+// The one and only authorized admin email. Checked client-side AND enforced
+// server-side by Supabase RLS policies (auth.email() = ADMIN_EMAIL).
+const ADMIN_EMAIL = "jamailyaz2024@gmail.com";
 const DATASET_GOAL_HOURS = 100;
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
 
 type DonorRecordingGroup = {
   donorId: string;
@@ -27,11 +33,16 @@ type DonorRecordingGroup = {
 };
 
 export function AdminDashboard() {
-  const [isAuthed, setIsAuthed] = useState(
-    () => localStorage.getItem(ADMIN_SESSION_KEY) === "true",
-  );
-  const [password, setPassword] = useState("");
+  // undefined = Supabase session not yet resolved (loading)
+  // null      = no active session
+  // Session   = authenticated
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [authError, setAuthError] = useState("");
+  const [loginAttempts, setLoginAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState(0);
+
   const [donors, setDonors] = useState<AdminDonor[]>([]);
   const [recordings, setRecordings] = useState<AdminRecording[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,7 +54,26 @@ export function AdminDashboard() {
   const [updatingId, setUpdatingId] = useState("");
   const [expandedDonors, setExpandedDonors] = useState<Set<string>>(new Set());
 
-  const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD as string | undefined;
+  // Resolve Supabase Auth session on mount and keep it in sync.
+  useEffect(() => {
+    const sb = getSupabase();
+
+    sb.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = sb.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // The authenticated user's email must exactly match the admin address.
+  // This check is also enforced by server-side RLS policies.
+  const isAdmin = session?.user?.email?.toLowerCase() === ADMIN_EMAIL;
 
   const loadDashboard = async () => {
     setIsLoading(true);
@@ -61,19 +91,8 @@ export function AdminDashboard() {
   };
 
   useEffect(() => {
-    if (isAuthed) void loadDashboard();
-  }, [isAuthed]);
-
-  useEffect(() => {
-    recordings.forEach((recording) => {
-      console.log("recording audio fields", {
-        id: recording.id,
-        audio_url: recording.audio_url,
-        audio_path: recording.audio_path,
-        file_path: recording.file_path,
-      });
-    });
-  }, [recordings]);
+    if (isAdmin) void loadDashboard();
+  }, [isAdmin]);
 
   const totalDurationSeconds = useMemo(
     () => recordings.reduce((sum, recording) => sum + (recording.duration_seconds ?? 0), 0),
@@ -117,22 +136,70 @@ export function AdminDashboard() {
     [recordings],
   );
 
-  const handlePasswordSubmit = (event: FormEvent<HTMLFormElement>) => {
+  // Sign in via Supabase Auth and verify the email server-side before granting access.
+  const handleLoginSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!adminPassword) {
-      setAuthError("VITE_ADMIN_PASSWORD is not configured.");
+    if (Date.now() < lockedUntil) {
+      const secs = Math.ceil((lockedUntil - Date.now()) / 1000);
+      setAuthError(`Too many failed attempts. Try again in ${secs} seconds.`);
       return;
     }
 
-    if (password !== adminPassword) {
-      setAuthError("Incorrect admin password.");
+    const sb = getSupabase();
+    const { error: signInError } = await sb.auth.signInWithPassword({
+      email: loginEmail.trim().toLowerCase(),
+      password: loginPassword,
+    });
+
+    if (signInError) {
+      const attempts = loginAttempts + 1;
+      setLoginAttempts(attempts);
+
+      if (attempts >= MAX_LOGIN_ATTEMPTS) {
+        setLockedUntil(Date.now() + LOCKOUT_DURATION_MS);
+        setLoginAttempts(0);
+        setAuthError("Too many failed attempts. Please wait 15 minutes before trying again.");
+      } else {
+        setAuthError(
+          `Invalid credentials. ${MAX_LOGIN_ATTEMPTS - attempts} attempt(s) remaining.`,
+        );
+      }
+
+      setLoginPassword("");
       return;
     }
 
-    localStorage.setItem(ADMIN_SESSION_KEY, "true");
-    setIsAuthed(true);
+    // getUser() makes a live network call to Supabase — cannot be faked client-side.
+    const {
+      data: { user },
+      error: userError,
+    } = await sb.auth.getUser();
+
+    if (userError || !user) {
+      await sb.auth.signOut();
+      setAuthError("Authentication failed. Please try again.");
+      setLoginPassword("");
+      return;
+    }
+
+    if (user.email?.toLowerCase() !== ADMIN_EMAIL) {
+      await sb.auth.signOut();
+      setAuthError("Access denied. This dashboard is restricted to authorized administrators.");
+      setLoginEmail("");
+      setLoginPassword("");
+      return;
+    }
+
     setAuthError("");
+    setLoginAttempts(0);
+    setLoginPassword("");
+  };
+
+  const handleAdminLogout = async () => {
+    await getSupabase().auth.signOut();
+    setDonors([]);
+    setRecordings([]);
   };
 
   const handleStatusUpdate = async (recordingId: string, status: ReviewStatus) => {
@@ -199,27 +266,67 @@ export function AdminDashboard() {
     });
   };
 
-  if (!isAuthed) {
+  // Supabase session not yet resolved — show neutral loading state.
+  if (session === undefined) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#eef6ff]">
+        <p className="text-lg font-bold text-slate-600">Loading...</p>
+      </main>
+    );
+  }
+
+  // Not authenticated or authenticated with the wrong account.
+  if (!session || !isAdmin) {
     return (
       <main className="min-h-screen bg-[#eef6ff] px-5 py-10 text-slate-900">
         <section className="mx-auto max-w-sm rounded-3xl border border-blue-100 bg-white p-6 shadow-soft">
           <img alt="RAJO AI" className="h-20 w-auto object-contain" src="/logo%20rajo%20ai.png" />
           <h1 className="mt-5 text-2xl font-black text-slate-950">RAJO AI Admin</h1>
-          <form className="mt-5" onSubmit={handlePasswordSubmit}>
+          <p className="mt-1 text-sm text-slate-500">Authorized access only.</p>
+          <form
+            className="mt-5 space-y-3"
+            onSubmit={(e) => void handleLoginSubmit(e)}
+          >
             <label className="block">
-              <span className="field-label">Admin password</span>
+              <span className="field-label">Email</span>
               <input
+                autoComplete="email"
                 className="field"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                required
+                type="email"
+                value={loginEmail}
+                onChange={(e) => setLoginEmail(e.target.value)}
               />
             </label>
-            {authError && <p className="mt-3 text-sm font-bold text-red-600">{authError}</p>}
-            <button className="btn-primary mt-5 w-full" type="submit">
-              Enter Dashboard
+            <label className="block">
+              <span className="field-label">Password</span>
+              <input
+                autoComplete="current-password"
+                className="field"
+                required
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+              />
+            </label>
+            {authError && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">
+                {authError}
+              </p>
+            )}
+            <button className="btn-primary mt-2 w-full" type="submit">
+              Sign In to Admin
             </button>
           </form>
+          {session && !isAdmin && (
+            <button
+              className="mt-4 w-full text-sm text-slate-500 underline hover:text-slate-700"
+              type="button"
+              onClick={() => void handleAdminLogout()}
+            >
+              Sign out of current account
+            </button>
+          )}
         </section>
       </main>
     );
@@ -237,12 +344,18 @@ export function AdminDashboard() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="admin-action admin-action-secondary" disabled={isLoading} onClick={loadDashboard}>
+            <button className="admin-action admin-action-secondary" disabled={isLoading} onClick={() => void loadDashboard()}>
               {isLoading ? "Refreshing..." : "Refresh Data"}
             </button>
             <a className="admin-action admin-action-primary" href="/">
               Donate Flow
             </a>
+            <button
+              className="admin-action admin-action-secondary"
+              onClick={() => void handleAdminLogout()}
+            >
+              Sign Out
+            </button>
           </div>
         </div>
       </header>
@@ -290,9 +403,9 @@ export function AdminDashboard() {
                 key={group.donorId}
                 updatingId={updatingId}
                 expanded={expandedDonors.has(group.donorId)}
-                onDelete={handleDeleteRecording}
-                onQualityScoreUpdate={handleQualityScoreUpdate}
-                onStatusUpdate={handleStatusUpdate}
+                onDelete={(rec) => void handleDeleteRecording(rec)}
+                onQualityScoreUpdate={(id, score) => void handleQualityScoreUpdate(id, score)}
+                onStatusUpdate={(id, status) => void handleStatusUpdate(id, status)}
                 onToggle={() => toggleDonor(group.donorId)}
               />
             ))}
@@ -507,7 +620,6 @@ function RecordingRow({
 }
 
 function AudioPlayer({ error, src }: { error: string; src: string }) {
-  console.log("AUDIO SRC:", src);
   const [failed, setFailed] = useState(false);
 
   if (!src) return <p className="text-sm font-bold text-slate-500">Recording file missing</p>;

@@ -91,11 +91,16 @@ ALTER TABLE voice_recordings
 
 ALTER TABLE voice_recordings ENABLE ROW LEVEL SECURITY;
 
--- Allow anonymous volunteers to submit recordings
+-- Anonymous recording insert is intentionally restricted:
+-- WITH CHECK (false) blocks all anonymous inserts. Authenticated
+-- users are covered by "authenticated_insert_own_voice_recordings".
+-- If your sign-up flow still needs anonymous inserts (e.g. because
+-- Supabase email confirmation delays the session), temporarily flip
+-- this to WITH CHECK (true) and tighten it once auth is confirmed.
 CREATE POLICY "anon_insert_voice_recordings"
   ON voice_recordings FOR INSERT
   TO anon
-  WITH CHECK (true);
+  WITH CHECK (false);
 
 DO $$
 BEGIN

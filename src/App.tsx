@@ -249,7 +249,7 @@ function VoiceCollectionApp() {
         {authLoading ? (
           <CenteredMessage text="Loading RAJO AI..." />
         ) : view === "home" ? (
-          <HomePage onStart={() => startFromHome("register", "record")} />
+          <HomePage onAbout={() => navigate("about", "/about")} onStart={() => startFromHome("register", "record")} />
         ) : view === "about" ? (
           <AboutPage onStart={() => startFromHome("register", "record")} />
         ) : view === "auth" ? (
@@ -287,7 +287,7 @@ function VoiceCollectionApp() {
         ) : view === "prompts" && user ? (
           <PromptManagement prompts={prompts} onBack={() => navigate("dashboard", "/")} onPromptsChange={setPrompts} />
         ) : (
-          <HomePage onStart={() => startFromHome("register", "record")} />
+          <HomePage onAbout={() => navigate("about", "/about")} onStart={() => startFromHome("register", "record")} />
         )}
       </main>
     </div>
@@ -497,23 +497,111 @@ function AboutSection({ children, title }: { children: ReactNode; title: string 
   );
 }
 
-function HomePage({ onStart }: { onStart: () => void }) {
+function HomePage({ onAbout, onStart }: { onAbout: () => void; onStart: () => void }) {
+  const trustSignals = [
+    ["Consent-led", "Every recording starts with clear permission."],
+    ["Dialect-aware", "Built to include Somali voices across regions."],
+    ["Fast to help", "Read short prompts and submit from your browser."],
+  ];
+  const workflow = [
+    "Create your contributor profile",
+    "Read one short Somali prompt",
+    "Review and submit your voice",
+  ];
+
   return (
-    <section className="mx-auto flex min-h-[calc(100vh-73px)] max-w-4xl flex-col items-center justify-center px-5 py-12 text-center">
-      <BrandWaveform className="mb-6 h-12 w-auto sm:h-14" opacity={0.7} />
-      <h1 className="text-4xl font-black tracking-normal text-slate-950 sm:text-6xl">
-        Donate your Somali voice
-      </h1>
-      <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-        Help build ethical Somali voice AI by reading short Somali prompts
-      </p>
-      <div className="mt-9 flex w-full max-w-md flex-col gap-3 sm:flex-row">
-        <button className="btn-primary flex-1 text-base" onClick={onStart}>Start Recording</button>
-      </div>
-      <p className="mt-7 rounded-full border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700">
-        Your voice is collected only with consent
-      </p>
-    </section>
+    <div className="overflow-hidden bg-white">
+      <section className="relative px-5 py-14 sm:py-20">
+        <div className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,#f7fbff_0%,#ffffff_58%,#eef7f1_100%)]" />
+        <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-[1.02fr_0.98fr]">
+          <div>
+            <div className="inline-flex items-center gap-3 rounded-full border border-blue-100 bg-white px-4 py-2 text-sm font-black text-rajo-primary shadow-sm">
+              <BrandWaveform className="h-5 w-auto" opacity={0.85} />
+              Somali voice data, built with consent
+            </div>
+            <h1 className="mt-6 max-w-4xl text-4xl font-black leading-[1.03] text-slate-950 sm:text-6xl">
+              Donate your Somali voice to build AI that understands us.
+            </h1>
+            <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
+              RAJO AI helps Somali speakers record short prompts so future voice tools can hear our pronunciation, rhythm, accents, and dialects more naturally.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <button className="btn-primary text-base" onClick={onStart}>Start Recording</button>
+              <button className="btn-secondary text-base" onClick={onAbout}>
+                Learn About RAJO
+              </button>
+            </div>
+            <div className="mt-8 grid gap-3 sm:grid-cols-3">
+              {trustSignals.map(([title, text]) => (
+                <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm" key={title}>
+                  <p className="text-sm font-black text-slate-950">{title}</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{text}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative">
+            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft sm:p-6">
+              <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-4">
+                <div>
+                  <p className="text-sm font-black uppercase tracking-[0.18em] text-rajo-primary">Prompt preview</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">1 of 120 starter prompts</p>
+                </div>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase text-emerald-700">
+                  Ready
+                </span>
+              </div>
+              <div className="py-8 text-center">
+                <p className="text-sm font-black uppercase tracking-wide text-slate-500">Read aloud</p>
+                <p className="mt-4 text-3xl font-black leading-tight text-slate-950 sm:text-4xl">
+                  Maanta waa maalin wanaagsan.
+                </p>
+                <BrandWaveform className="mx-auto mt-7 h-16 w-auto" opacity={0.7} />
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {["Quiet room", "Phone mic", "Normal pace"].map((item) => (
+                  <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-center text-sm font-black text-blue-700" key={item}>
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-y border-slate-200 bg-slate-950 px-5 py-10 text-white">
+        <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-[0.85fr_1.15fr] md:items-center">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-200">How it works</p>
+            <h2 className="mt-3 text-3xl font-black sm:text-4xl">Three minutes can move Somali voice AI forward.</h2>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {workflow.map((step, index) => (
+              <article className="rounded-lg border border-white/10 bg-white/5 p-4" key={step}>
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-black text-slate-950">
+                  {index + 1}
+                </span>
+                <p className="mt-4 text-sm font-bold leading-6 text-slate-100">{step}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-5 py-14">
+        <div className="mx-auto flex max-w-6xl flex-col gap-5 rounded-lg border border-emerald-100 bg-emerald-50 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
+          <div>
+            <h2 className="text-2xl font-black text-slate-950">Your voice stays tied to a clear purpose.</h2>
+            <p className="mt-2 max-w-3xl leading-7 text-slate-700">
+              Recordings support ethical Somali speech technology, with contributor details used to improve dialect and accent coverage.
+            </p>
+          </div>
+          <button className="btn-primary shrink-0" onClick={onStart}>Contribute Voice</button>
+        </div>
+      </section>
+    </div>
   );
 }
 
