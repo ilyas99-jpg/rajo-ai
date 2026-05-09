@@ -241,6 +241,7 @@ function VoiceCollectionApp() {
         activeView={view}
         isSignedIn={Boolean(user)}
         onAbout={() => navigate("about", "/about")}
+        onContribute={() => startFromHome("register", "record")}
         onDashboard={() => navigate(user ? "dashboard" : "home", "/")}
         onHome={() => navigate("home", "/")}
         onLogout={handleLogout}
@@ -249,7 +250,7 @@ function VoiceCollectionApp() {
 
       <main>
         {authLoading ? (
-          <CenteredMessage text="Loading RAJO AI..." />
+          <CenteredMessage text="Loading Rajo AI..." />
         ) : view === "home" ? (
           <HomePage onAbout={() => navigate("about", "/about")} onStart={() => startFromHome("register", "record")} />
         ) : view === "about" ? (
@@ -300,6 +301,7 @@ function TopBar({
   activeView,
   isSignedIn,
   onAbout,
+  onContribute,
   onDashboard,
   onHome,
   onLogout,
@@ -308,29 +310,42 @@ function TopBar({
   activeView: View;
   isSignedIn: boolean;
   onAbout: () => void;
+  onContribute: () => void;
   onDashboard: () => void;
   onHome: () => void;
   onLogout: () => void;
   onSignIn: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+    <header className="sticky top-0 z-20 border-b border-slate-100 bg-white/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-        <button className="flex items-center gap-3" onClick={onDashboard}>
-          <img alt="RAJO AI" className="h-14 w-auto object-contain" src="/logo%20rajo%20ai.png" />
+        <button className="flex items-center" onClick={onDashboard}>
+          <img alt="Rajo AI" className="h-10 w-auto object-contain" src="/logo%20rajo%20ai.png" />
         </button>
         <nav className="flex items-center gap-1 sm:gap-2">
           {activeView !== "home" && activeView !== "dashboard" && (
-            <button className="btn-ghost" onClick={onHome}>Home</button>
+            <button className="btn-ghost text-sm" onClick={onHome}>
+              Home
+            </button>
           )}
-          <button className={`btn-ghost ${activeView === "about" ? "bg-blue-50 text-rajo-primary" : ""}`} onClick={onAbout}>
+          <button
+            className={`btn-ghost text-sm ${activeView === "about" ? "bg-blue-50 text-rajo-primary" : ""}`}
+            onClick={onAbout}
+          >
             About
           </button>
           {isSignedIn ? (
-            <button className="btn-ghost" onClick={onLogout}>Sign Out</button>
+            <button className="btn-ghost text-sm" onClick={onLogout}>
+              Sign Out
+            </button>
           ) : (
-            <button className="btn-ghost" onClick={onSignIn}>Sign In</button>
+            <button className="btn-ghost text-sm" onClick={onSignIn}>
+              Sign In
+            </button>
           )}
+          <button className="btn-primary ml-1 whitespace-nowrap text-sm" onClick={onContribute}>
+            Contribute Voice
+          </button>
         </nav>
       </div>
     </header>
@@ -339,151 +354,157 @@ function TopBar({
 
 function AboutPage({ onStart }: { onStart: () => void }) {
   return (
-    <div>
+    <div className="bg-white">
+
       {/* ── SECTION 1: HERO ── */}
-      <section className="relative overflow-hidden bg-white px-5 py-20 sm:py-28">
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-blue-50/70 to-white" />
-        {/* Waveform — logo pattern scaled up, low-opacity decorative background */}
-        <div className="pointer-events-none absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-center" aria-hidden="true">
-          <BrandWaveform className="w-full max-w-2xl" opacity={0.07} />
-        </div>
-        <div className="relative mx-auto max-w-5xl text-center">
-          <p className="text-sm font-black uppercase tracking-[0.22em] text-[#467ED3]">ABOUT RAJO AI</p>
-          <h1 className="mx-auto mt-6 max-w-4xl text-5xl font-black leading-tight text-slate-950 sm:text-7xl">
-            Building the future of Somali voice AI.
+      <section className="border-b border-slate-100 bg-white px-5 py-20 sm:py-28">
+        <div className="mx-auto max-w-3xl text-center">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">About Rajo AI</p>
+          <h1 className="mt-5 text-4xl font-black leading-tight text-slate-950 sm:text-6xl">
+            Building ethical Somali voice technology with real Somali voices.
           </h1>
-          <p className="mx-auto mt-6 max-w-3xl text-xl leading-9 text-slate-600">
-            An open initiative dedicated to ethical, high-quality Somali speech technology — for everyone.
-          </p>
-          <p className="mt-5 text-lg italic text-[#467ED3]">
-            U hiili luuqadaada hooyo adoo ku deeqaya codkaaga.
+          <p className="mt-6 text-lg leading-8 text-slate-500">
+            Codkeenna maanta wuxuu dhisayaa mustaqbalka Af-Soomaaliga.
           </p>
         </div>
       </section>
 
-      {/* ── SECTION 2: WHY WE EXIST ── */}
-      <section className="bg-white px-5 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-8 text-3xl font-black text-slate-950 sm:text-4xl">Why we exist</h2>
-          <div className="grid gap-4 md:grid-cols-3">
-            <article className="about-panel transition hover:-translate-y-1 hover:border-blue-100 hover:shadow-lg">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#467ED3]/10">
-                <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="#467ED3" strokeWidth="2">
+      {/* ── SECTION 2: SOMALI EXPLANATION ── */}
+      <section className="bg-[#F7FAFF] px-5 py-16 sm:py-20">
+        <div className="mx-auto max-w-2xl space-y-7">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Af-Soomaali</p>
+          <p className="text-lg leading-9 text-slate-700">
+            Rajo AI waa mashruuc lagu uruurinayo codadka Af-Soomaaliga si loo dhiso AI iyo technology si fiican u fahmi kara uguna hadli kara Af-Soomaaliga si dabiici ah.
+          </p>
+          <p className="text-lg leading-9 text-slate-700">
+            Maanta dunidu waxay si degdeg ah ugu wareegaysaa AI iyo cod-fahanka, laakiin Af-Soomaaligu wali xog badan kuma laha teknoolojiyadan. Haddii aynaan maanta dhisin xogtayada codka, waxaa dhici karta in luuqaddeenna laga tago mustaqbalka technology-ga.
+          </p>
+          <p className="text-lg leading-9 text-slate-700">
+            Mashruucan wuxuu qof kasta siinayaa fursad uu codkiisa ugu deeqo si loo abuuro AI si fiican ugu hadli kara Af-Soomaaliga, una fahmi kara lahjadaha, dhawaaqa, iyo hadalka Soomaalida.
+          </p>
+          <p className="text-lg font-semibold leading-9 text-slate-800">
+            Cod kasta oo la duubo wuxuu qayb ka yahay ilaalinta iyo hormarinta luuqaddeenna dhinaca technology-ga iyo AI-ga mustaqbalka.
+          </p>
+        </div>
+      </section>
+
+      {/* ── SECTION 3: OUR MISSION ── */}
+      <section className="bg-white px-5 py-16 sm:py-20">
+        <div className="mx-auto max-w-2xl">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Our mission</p>
+          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">
+            Language should not be a barrier to technology.
+          </h2>
+          <p className="mt-6 text-lg leading-9 text-slate-600">
+            Rajo AI collects high-quality Somali voice data with consent, respect, and transparency so future AI systems can understand and speak Somali more naturally.
+          </p>
+        </div>
+      </section>
+
+      {/* ── SECTION 4: WHY IT MATTERS ── */}
+      <section className="bg-[#F7FAFF] px-5 py-16 sm:py-20">
+        <div className="mx-auto max-w-5xl">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Why it matters</p>
+          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">Somali deserves a seat in the AI future.</h2>
+          <div className="mt-10 grid gap-5 sm:grid-cols-3">
+            <article className="rounded-2xl border border-slate-100 bg-white p-7">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a9 9 0 0 1 18 0M3 9v5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9m10 0v5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9" />
+                </svg>
+              </div>
+              <h3 className="mt-5 font-black text-slate-950">Underrepresented language</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">Somali is spoken by over 20 million people, yet it remains one of the least supported languages in modern speech AI.</p>
+            </article>
+            <article className="rounded-2xl border border-slate-100 bg-white p-7">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.5a4 4 0 0 0 4-4v-7a4 4 0 1 0-8 0v7a4 4 0 0 0 4 4Z" />
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 11.5v3a7 7 0 0 0 14 0v-3M12 21v-2.5" />
                 </svg>
               </div>
-              <h3 className="mt-5 text-xl font-black text-slate-950">Built for Somali</h3>
-              <p className="mt-3 text-base leading-7 text-slate-600">Most AI voices struggle with Somali pronunciation and accent.</p>
+              <h3 className="mt-5 font-black text-slate-950">Real accents and dialects</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">AI needs to hear Somali the way Somalis actually speak it with regional accents, natural rhythm, and real dialects.</p>
             </article>
-            <article className="about-panel transition hover:-translate-y-1 hover:border-blue-100 hover:shadow-lg">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#467ED3]/10">
-                <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="#467ED3" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a9 9 0 0 1 18 0" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 9v5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 9v5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9" />
-                </svg>
-              </div>
-              <h3 className="mt-5 text-xl font-black text-slate-950">Tools we deserve</h3>
-              <p className="mt-3 text-base leading-7 text-slate-600">Voice assistants, audiobooks, and accessibility tools that understand us.</p>
-            </article>
-            <article className="about-panel transition hover:-translate-y-1 hover:border-blue-100 hover:shadow-lg">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#467ED3]/10">
-                <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="#467ED3" strokeWidth="2">
+            <article className="rounded-2xl border border-slate-100 bg-white p-7">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
                 </svg>
               </div>
-              <h3 className="mt-5 text-xl font-black text-slate-950">Ethics first</h3>
-              <p className="mt-3 text-base leading-7 text-slate-600">Data collected with consent, transparency, and respect.</p>
+              <h3 className="mt-5 font-black text-slate-950">Our language, our future</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">If we don't build this now, Somali risks being left behind as the world moves deeper into voice-driven technology.</p>
             </article>
           </div>
         </div>
       </section>
 
-      {/* ── SECTION 3: HOW IT WORKS ── */}
-      <section className="bg-[#FAFBFD] px-5 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-8 text-3xl font-black text-slate-950 sm:text-4xl">How it works</h2>
-          <div className="space-y-3">
-            {[
-              "Contributors read short everyday Somali prompts",
-              "Recordings are reviewed for quality",
-              "Data trains Somali TTS and ASR models",
-              "Models released to the Somali community",
-            ].map((step, i) => (
-              <div className="about-panel flex items-center gap-4 p-5" key={step}>
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#467ED3] text-sm font-black text-white">
-                  {i + 1}
-                </span>
-                <p className="text-lg font-semibold text-slate-700">{step}</p>
+      {/* ── SECTION 5: PRIVACY & ETHICS ── */}
+      <section className="bg-white px-5 py-16 sm:py-20">
+        <div className="mx-auto max-w-5xl">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Privacy & ethics</p>
+          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">Built with care and respect.</h2>
+          <div className="mt-10 grid gap-5 sm:grid-cols-3">
+            <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-[#F7FAFF] p-7">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+                </svg>
               </div>
-            ))}
+              <div>
+                <h3 className="font-black text-slate-950">Consent-based contribution</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Every recording begins with clear, explicit consent from the contributor. You are always in control.</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-[#F7FAFF] p-7">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-black text-slate-950">Private audio storage</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">All recordings are stored in a secure, private bucket never publicly accessible without authorization.</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-[#F7FAFF] p-7">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
+                <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="font-black text-slate-950">Admin-reviewed submissions</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">Every recording is manually reviewed before it enters the dataset — quality and care at every step.</p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ── SECTION 4: OUR COMMITMENT ── */}
-      <section className="bg-white px-5 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-8 text-3xl font-black text-slate-950 sm:text-4xl">Our commitment</h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[
-              ["Consent first", "Every recording begins with clear permission from the contributor."],
-              ["Privacy", "Contributor data is handled carefully and used only for the stated mission."],
-              ["Community ownership", "Somali speakers should help shape Somali voice technology."],
-              ["Diversity", "All dialects, accents, genders, regions, and speaking styles welcome."],
-            ].map(([title, text]) => (
-              <article className="about-panel" key={title}>
-                <h3 className="text-xl font-black text-slate-950">{title}</h3>
-                <p className="mt-3 leading-7 text-slate-600">{text}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SECTION 5: WHO WE ARE ── */}
-      <section className="bg-[#FAFBFD] px-5 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <h2 className="mb-8 text-3xl font-black text-slate-950 sm:text-4xl">Who we are</h2>
-          <div className="about-panel space-y-6">
-            <p className="text-lg leading-9 text-slate-700">
-              RAJO AI was founded by Jama Ilyas Abdisalan, a Somali software engineer and AI specialist. AI today can speak Somali — but it doesn't sound Somali. The pronunciation is wrong, the rhythm is foreign. He started RAJO to fix that. Our language deserves to be heard correctly by every machine in the world.
+      {/* ── SECTION 6: CONTACT ── */}
+      <section className="border-t border-slate-100 bg-white px-5 py-16 sm:py-20">
+        <div className="mx-auto max-w-2xl text-center">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Get in touch</p>
+          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">Questions or partnerships?</h2>
+          <p className="mt-4 text-slate-500">We'd love to hear from researchers, community organizations, and anyone who wants to help Somali voice technology grow.</p>
+          <a
+            className="mt-8 inline-block rounded-xl bg-[#467ED3] px-8 py-3.5 text-base font-black text-white shadow-sm transition hover:bg-[#3a6ec0]"
+            href="mailto:hello@rajoai.com"
+          >
+            hello@rajoai.com
+          </a>
+          <div className="mt-14 border-t border-slate-100 pt-10">
+            <button className="btn-primary px-8 py-3 text-base" onClick={onStart}>
+              Contribute your voice →
+            </button>
+            <p className="mt-4 text-sm italic text-[#467ED3]">
+              Ku deeq codkaaga si aad uga qayb qaadato horumarinta luuqadda Soomaaliga.
             </p>
-            <blockquote className="border-l-4 border-[#467ED3] pl-5">
-              <p className="text-lg italic text-slate-800">
-                "Tallaabo yar oo wax wayn u ah mustaqbalka Soomaalida."
-              </p>
-              <p className="mt-2 text-sm text-slate-500">A small step — a giant one for the Somali future.</p>
-            </blockquote>
-            <p className="text-lg font-semibold text-slate-700">
-              Built for Somalis everywhere —{" "}
-              <em className="text-[#467ED3]">Soomaali meel kasta oo ay joogto.</em>
-            </p>
           </div>
         </div>
       </section>
 
-      {/* ── SECTION 6: CTA ── */}
-      <section className="px-5 py-20">
-        <div className="mx-auto max-w-4xl rounded-[2rem] border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-blue-50 px-6 py-16 text-center shadow-soft sm:px-10">
-          <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#467ED3] text-white">
-            <svg aria-hidden="true" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.5a4 4 0 0 0 4-4v-7a4 4 0 1 0-8 0v7a4 4 0 0 0 4 4Z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 11.5v3a7 7 0 0 0 14 0v-3M12 21v-2.5" />
-            </svg>
-          </div>
-          <h2 className="text-4xl font-black text-slate-950 sm:text-5xl">
-            Ready to make history with your voice?
-          </h2>
-          <p className="mt-4 text-lg italic text-[#467ED3]">
-            Ku deeq codkaaga si aad uga qayb qaadato horumarinta luuqadda Soomaaliga.
-          </p>
-          <button className="btn-primary mt-8 bg-[#467ED3] text-base" onClick={onStart}>
-            Ku deeq codkaaga →
-          </button>
-        </div>
-      </section>
     </div>
   );
 }
@@ -500,112 +521,189 @@ function AboutSection({ children, title }: { children: ReactNode; title: string 
 }
 
 function HomePage({ onAbout, onStart }: { onAbout: () => void; onStart: () => void }) {
-  const trustSignals = [
-    ["Consent-led", "Every recording starts with clear permission."],
-    ["Dialect-aware", "Built to include Somali voices across regions."],
-    ["Fast to help", "Read short prompts and submit from your browser."],
-  ];
-  const workflow = [
-    "Create your contributor profile",
-    "Read one short Somali prompt",
-    "Review and submit your voice",
-  ];
-
   return (
     <div className="overflow-hidden bg-white">
-      <section className="relative px-5 py-14 sm:py-20">
-        <div className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,#f7fbff_0%,#ffffff_58%,#eef7f1_100%)]" />
-        <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-[1.02fr_0.98fr]">
-          <div>
-            <div className="inline-flex items-center gap-3 rounded-full border border-blue-100 bg-white px-4 py-2 text-sm font-black text-rajo-primary shadow-sm">
-              <BrandWaveform className="h-5 w-auto" opacity={0.85} />
-              Somali voice data, built with consent
-            </div>
-            <h1 className="mt-6 max-w-4xl text-4xl font-black leading-[1.03] text-slate-950 sm:text-6xl">
-              Donate your Somali voice to build AI that understands us.
-            </h1>
-            <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600 sm:text-xl">
-              RAJO AI helps Somali speakers record short prompts so future voice tools can hear our pronunciation, rhythm, accents, and dialects more naturally.
-            </p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-              <button className="btn-primary text-base" onClick={onStart}>Start Recording</button>
-              <button className="btn-secondary text-base" onClick={onAbout}>
-                Learn About RAJO
-              </button>
-            </div>
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              {trustSignals.map(([title, text]) => (
-                <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm" key={title}>
-                  <p className="text-sm font-black text-slate-950">{title}</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-600">{text}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative">
-            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-soft sm:p-6">
-              <div className="flex items-center justify-between gap-4 border-b border-slate-200 pb-4">
-                <div>
-                  <p className="text-sm font-black uppercase tracking-[0.18em] text-rajo-primary">Prompt preview</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-500">1 of 120 starter prompts</p>
-                </div>
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase text-emerald-700">
-                  Ready
-                </span>
-              </div>
-              <div className="py-8 text-center">
-                <p className="text-sm font-black uppercase tracking-wide text-slate-500">Read aloud</p>
-                <p className="mt-4 text-3xl font-black leading-tight text-slate-950 sm:text-4xl">
-                  Maanta waa maalin wanaagsan.
-                </p>
-                <BrandWaveform className="mx-auto mt-7 h-16 w-auto" opacity={0.7} />
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {["Quiet room", "Phone mic", "Normal pace"].map((item) => (
-                  <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-3 text-center text-sm font-black text-blue-700" key={item}>
-                    {item}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
+      <HeroSection onAbout={onAbout} onStart={onStart} />
       <DatasetStatsSection />
-
-      <section className="border-y border-slate-200 bg-slate-950 px-5 py-10 text-white">
-        <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-[0.85fr_1.15fr] md:items-center">
-          <div>
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-200">How it works</p>
-            <h2 className="mt-3 text-3xl font-black sm:text-4xl">Three minutes can move Somali voice AI forward.</h2>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {workflow.map((step, index) => (
-              <article className="rounded-lg border border-white/10 bg-white/5 p-4" key={step}>
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-sm font-black text-slate-950">
-                  {index + 1}
-                </span>
-                <p className="mt-4 text-sm font-bold leading-6 text-slate-100">{step}</p>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="px-5 py-14">
-        <div className="mx-auto flex max-w-6xl flex-col gap-5 rounded-lg border border-emerald-100 bg-emerald-50 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
-          <div>
-            <h2 className="text-2xl font-black text-slate-950">Your voice stays tied to a clear purpose.</h2>
-            <p className="mt-2 max-w-3xl leading-7 text-slate-700">
-              Recordings support ethical Somali speech technology, with contributor details used to improve dialect and accent coverage.
-            </p>
-          </div>
-          <button className="btn-primary shrink-0" onClick={onStart}>Contribute Voice</button>
-        </div>
-      </section>
+      <HowItWorksSection />
+      <TrustSection />
+      <CtaSection onStart={onStart} />
+      <SiteFooter />
     </div>
+  );
+}
+
+function HeroSection({ onAbout, onStart }: { onAbout: () => void; onStart: () => void }) {
+  return (
+    <section className="bg-white px-5 py-16 sm:py-20 lg:py-24">
+      <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-16">
+
+        {/* Left — text */}
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#467ED3]">
+            Built for Somali voices
+          </p>
+          <h1 className="mt-5 text-[2.4rem] font-black leading-[1.06] tracking-tight text-slate-950 sm:text-5xl">
+           Preserve Somali voices for the future
+          </h1>
+          <p className="mt-5 max-w-md text-lg leading-8 text-slate-500">
+            Record a few Somali sentences and help build speech technology that understands Somali accents and dialects
+          </p>
+           <p  className="mt-10  text-sm italic text-slate-400">Your contributions will be used to train AI models that better understand and generate Somali speech.</p>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <button className="btn-primary px-7 py-3 text-base" onClick={onStart}>
+              Start Recording
+            </button>
+            <button className="btn-secondary px-7 py-3 text-base" onClick={onAbout}>
+              Learn More
+            </button>
+          </div>
+          <p className="mt-7 text-sm text-slate-400">
+            3 minutes · consent-based · private by design
+          </p>
+        </div>
+
+        {/* Right — editorial image */}
+        <figure className="m-0">
+          <div className="overflow-hidden rounded-[2rem] shadow-[0_8px_48px_-8px_rgba(0,0,0,0.18)]">
+            <img
+              alt="Aerial view of a Somali coastal town — colourful buildings, white sand beach, and turquoise sea"
+              className="h-64 w-full object-cover sm:h-80 lg:h-[460px]"
+              src="/somalia-coast.jpg"
+              style={{ filter: "saturate(0.82) brightness(0.97)", objectPosition: "center 42%" }}
+            />
+          </div>
+          <figcaption className="mt-2.5 text-right text-xs text-slate-400">
+            Murcanyo, Bari, Somalia. 
+            Photo: Marwan Somali
+          </figcaption>
+        </figure>
+
+      </div>
+    </section>
+  );
+}
+
+function HowItWorksSection() {
+  return (
+    <section className="bg-white px-5 py-16 sm:py-20">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-10 text-center">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">How it works</p>
+          <h2 className="mt-2 text-3xl font-black text-slate-950 sm:text-4xl">Three simple steps</h2>
+        </div>
+        <div className="grid gap-5 sm:grid-cols-3">
+          {[
+            { num: "1", title: "Create your profile", text: "Register once with your name, dialect, and region." },
+            { num: "2", title: "Read a sentence", text: "Short everyday Somali prompts displayed one at a time." },
+            { num: "3", title: "Submit your voice", text: "Recordings are securely stored and manually reviewed." },
+          ].map((step) => (
+            <div key={step.num} className="rounded-2xl border border-slate-100 bg-[#FAFBFD] p-7">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#467ED3] text-sm font-black text-white">
+                {step.num}
+              </span>
+              <h3 className="mt-5 text-lg font-black text-slate-950">{step.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{step.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TrustSection() {
+  return (
+    <section className="bg-[#F7FAFF] px-5 py-16">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-10 text-center">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Privacy & trust</p>
+          <h2 className="mt-2 text-3xl font-black text-slate-950 sm:text-4xl">Built with care</h2>
+        </div>
+        <div className="grid gap-5 sm:grid-cols-3">
+          <div className="flex flex-col gap-4 rounded-2xl border border-white bg-white p-6 shadow-sm">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+              <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-black text-slate-950">Consent-based collection</h3>
+              <p className="mt-1.5 text-sm leading-6 text-slate-500">Every recording is submitted with clear, explicit consent</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 rounded-2xl border border-white bg-white p-6 shadow-sm">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+              <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-black text-slate-950">Private audio storage</h3>
+              <p className="mt-1.5 text-sm leading-6 text-slate-500">All audio is stored in a private, secure bucket. Never publicly accessible.</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 rounded-2xl border border-white bg-white p-6 shadow-sm">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50">
+              <svg aria-hidden="true" className="h-5 w-5 text-[#467ED3]" fill="none" stroke="currentColor" strokeWidth="1.75" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="font-black text-slate-950">Admin-reviewed submissions</h3>
+              <p className="mt-1.5 text-sm leading-6 text-slate-500">Our team manually reviews every recording before it enters the dataset.</p>
+            </div>
+          </div>
+        </div>
+        <p className="mt-10 text-center text-sm italic text-slate-400">
+          "Codadka si ammaan iyo masuuliyad leh ayaa loo kaydinayaa."
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function CtaSection({ onStart }: { onStart: () => void }) {
+  return (
+    <section className="bg-[#467ED3] px-5 py-20">
+      <div className="mx-auto max-w-2xl text-center">
+        <h2 className="text-4xl font-black leading-tight text-white sm:text-5xl">
+          Add your voice to the Somali AI future.
+        </h2>
+        <p className="mt-4 text-base italic text-blue-100">
+          "Codkaaga maanta wuxuu qayb ka noqon karaa AI-ga Soomaalida ee berri."
+        </p>
+        <button
+          className="mt-9 rounded-xl bg-white px-8 py-3.5 text-base font-black text-[#467ED3] shadow-lg transition hover:bg-blue-50"
+          onClick={onStart}
+        >
+          Contribute Voice
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="bg-slate-950 px-5 py-12 text-center">
+      <img
+        alt="Rajo AI"
+        className="mx-auto h-10 w-auto object-contain opacity-90"
+        src="/logo%20rajo%20ai.png"
+      />
+      <p className="mt-5 text-sm font-semibold text-slate-400">Questions or partnerships?</p>
+      <a
+        className="mt-1 block text-sm font-black text-blue-400 hover:text-blue-300"
+        href="mailto:hello@rajoai.com"
+      >
+        hello@rajoai.com
+      </a>
+      <p className="mt-8 text-xs text-slate-600">Built for Somali voices, with respect and consent.</p>
+      <p className="mt-1 text-xs text-slate-700">© {new Date().getFullYear()} Rajo AI</p>
+    </footer>
   );
 }
 
@@ -622,60 +720,40 @@ function DatasetStatsSection() {
 
   if (!loading && !stats) return null;
 
-  const items: { label: string; value: string; sub?: string }[] = stats
+  const items = stats
     ? [
-        { label: "Voice Recordings", value: stats.total_recordings.toLocaleString() },
-        { label: "Approved Recordings", value: stats.approved_recordings.toLocaleString() },
-        {
-          label: "Approved Audio",
-          value: (stats.approved_duration_seconds / 3600).toFixed(1),
-          sub: "hours",
-        },
+        { label: "Recordings", value: stats.total_recordings.toLocaleString() },
+        { label: "Approved", value: stats.approved_recordings.toLocaleString() },
         { label: "Contributors", value: stats.total_contributors.toLocaleString() },
         { label: "Dialects", value: stats.dialects_covered.toLocaleString() },
-        { label: "Countries", value: stats.countries_covered.toLocaleString() },
       ]
-    : Array.from({ length: 6 }, (_, i) => ({ label: "", value: "", _skeleton: true } as { label: string; value: string; _skeleton?: boolean }));
+    : (Array.from({ length: 4 }, () => null) as null[]);
 
   return (
-    <section className="bg-white px-5 py-12 sm:py-16">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-8 text-center">
-          <p className="text-sm font-black uppercase tracking-[0.2em] text-rajo-primary">
-            Dataset progress
-          </p>
-          <h2 className="mt-2 text-3xl font-black text-slate-950 sm:text-4xl">
-            Built together, one voice at a time.
-          </h2>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <section className="border-y border-slate-100 bg-[#F7FAFF] px-5 py-12">
+      <div className="mx-auto max-w-4xl">
+        <div className="grid grid-cols-2 gap-y-8 sm:grid-cols-4">
           {items.map((item, i) =>
-            (item as { _skeleton?: boolean })._skeleton ? (
-              <div
-                key={i}
-                className="animate-pulse rounded-2xl border border-slate-100 bg-slate-50 p-5"
-              >
-                <div className="h-8 w-2/3 rounded-lg bg-slate-200" />
-                <div className="mt-2 h-3 w-full rounded bg-slate-100" />
+            item === null ? (
+              <div key={i} className="animate-pulse text-center">
+                <div className="mx-auto h-10 w-16 rounded-lg bg-slate-200" />
+                <div className="mx-auto mt-2.5 h-3 w-20 rounded bg-slate-100" />
               </div>
             ) : (
-              <article
-                key={item.label}
-                className="rounded-2xl border border-blue-50 bg-blue-50/60 p-5 text-center"
-              >
-                <p className="text-3xl font-black text-slate-950 sm:text-4xl">
+              <div key={item.label} className="text-center">
+                <p className="text-4xl font-black tabular-nums text-slate-950 sm:text-5xl">
                   {item.value}
-                  {item.sub && (
-                    <span className="ml-1 text-base font-bold text-slate-500">{item.sub}</span>
-                  )}
                 </p>
-                <p className="mt-1 text-xs font-black uppercase tracking-wide text-slate-500">
+                <p className="mt-1.5 text-[11px] font-black uppercase tracking-widest text-slate-400">
                   {item.label}
                 </p>
-              </article>
+              </div>
             ),
           )}
         </div>
+        <p className="mt-10 text-center text-sm italic text-[#467ED3]">
+          "Waxaan wada dhisaynaa mustaqbalka codka Soomaalida."
+        </p>
       </div>
     </section>
   );
@@ -802,7 +880,7 @@ function AuthPage({
             )}
             <label className="flex gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-slate-700">
               <input checked={formData.consent} className="mt-1 h-4 w-4" required type="checkbox" onChange={(event) => onFormChange({ ...formData, consent: event.target.checked })} />
-              I consent to RAJO AI collecting my submitted voice recordings for ethical Somali voice AI.
+              I consent to Rajo AI collecting my submitted voice recordings for ethical Somali voice AI.
             </label>
             <button className="btn-primary w-full" disabled={busy} type="submit">
               {busy ? "Creating account..." : "Create Account"}
