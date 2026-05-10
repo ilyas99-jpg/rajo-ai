@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Award, CheckCircle2, Flame, Mic, Star, Trophy, XCircle } from "lucide-react";
+import { Navbar } from "./components/Navbar";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { BrandWaveform } from "./components/Brand";
 import {
@@ -278,15 +279,21 @@ function VoiceCollectionApp() {
 
   return (
     <div className="min-h-screen bg-white text-slate-950">
-      <TopBar
+      <Navbar
         activeView={view}
-        isSignedIn={Boolean(user)}
-        onAbout={() => navigate("about", "/about")}
-        onContribute={() => startFromHome("register", "record")}
-        onDashboard={() => navigate(user ? "dashboard" : "home", "/")}
+        user={user}
         onHome={() => navigate("home", "/")}
-        onLogout={handleLogout}
+        onAbout={() => navigate("about", "/about")}
+        onHowItWorks={() => {
+          navigate("home", "/");
+          requestAnimationFrame(() => {
+            document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
+          });
+        }}
+        onDashboard={() => navigate(user ? "dashboard" : "home", "/")}
         onSignIn={() => startFromHome("login")}
+        onSignOut={handleLogout}
+        onMyRecordings={() => navigate(user ? "dashboard" : "home", "/")}
       />
 
       <main>
@@ -343,60 +350,6 @@ function VoiceCollectionApp() {
   );
 }
 
-function TopBar({
-  activeView,
-  isSignedIn,
-  onAbout,
-  onContribute,
-  onDashboard,
-  onHome,
-  onLogout,
-  onSignIn,
-}: {
-  activeView: View;
-  isSignedIn: boolean;
-  onAbout: () => void;
-  onContribute: () => void;
-  onDashboard: () => void;
-  onHome: () => void;
-  onLogout: () => void;
-  onSignIn: () => void;
-}) {
-  return (
-    <header className="sticky top-0 z-20 border-b border-slate-100 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-        <button className="flex items-center" onClick={onDashboard}>
-          <img alt="Rajo AI" className="h-10 w-auto object-contain" src="/logo%20rajo%20ai.png" />
-        </button>
-        <nav className="flex items-center gap-1 sm:gap-2">
-          {activeView !== "home" && activeView !== "dashboard" && (
-            <button className="btn-ghost text-sm" onClick={onHome}>
-              Home
-            </button>
-          )}
-          <button
-            className={`btn-ghost text-sm ${activeView === "about" ? "bg-blue-50 text-rajo-primary" : ""}`}
-            onClick={onAbout}
-          >
-            About
-          </button>
-          {isSignedIn ? (
-            <button className="btn-ghost text-sm" onClick={onLogout}>
-              Sign Out
-            </button>
-          ) : (
-            <button className="btn-ghost text-sm" onClick={onSignIn}>
-              Sign In
-            </button>
-          )}
-          <button className="btn-primary ml-1 whitespace-nowrap text-sm" onClick={onContribute}>
-            Contribute Voice
-          </button>
-        </nav>
-      </div>
-    </header>
-  );
-}
 
 function AboutPage({ onStart }: { onStart: () => void }) {
   return (
@@ -632,7 +585,7 @@ function HeroSection({ onAbout, onStart }: { onAbout: () => void; onStart: () =>
 
 function HowItWorksSection() {
   return (
-    <section className="bg-white px-5 py-16 sm:py-20">
+    <section id="how-it-works" className="bg-white px-5 py-16 sm:py-20">
       <div className="mx-auto max-w-5xl">
         <div className="mb-10 text-center">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">How it works</p>
