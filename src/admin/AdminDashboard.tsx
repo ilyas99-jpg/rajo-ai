@@ -778,6 +778,7 @@ function PromptManager({
     title: string;
     description: string;
     language: string;
+    dialect: string;
     unlockOrder: number;
     requiredPreviousPackId: string;
   }) => Promise<void>;
@@ -802,6 +803,7 @@ function PromptManager({
     title: "",
     description: "",
     language: "so",
+    dialect: "Maxaa Tiri",
     unlockOrder: 1,
     requiredPreviousPackId: "",
   });
@@ -849,6 +851,7 @@ function PromptManager({
                 title: "",
                 description: "",
                 language: "so",
+                dialect: "Maxaa Tiri",
                 unlockOrder: packs.length + 2,
                 requiredPreviousPackId: "",
               }),
@@ -864,9 +867,13 @@ function PromptManager({
               <input className="admin-field" placeholder="Language" value={packForm.language} onChange={(e) => setPackForm({ ...packForm, language: e.target.value })} />
               <input className="admin-field" min={1} type="number" value={packForm.unlockOrder} onChange={(e) => setPackForm({ ...packForm, unlockOrder: Number(e.target.value) })} />
             </div>
+            <select className="admin-field" required value={packForm.dialect} onChange={(e) => setPackForm({ ...packForm, dialect: e.target.value, requiredPreviousPackId: "" })}>
+              <option value="Maxaa Tiri">Maxaa Tiri</option>
+              <option value="May May">May May</option>
+            </select>
             <select className="admin-field" value={packForm.requiredPreviousPackId} onChange={(e) => setPackForm({ ...packForm, requiredPreviousPackId: e.target.value })}>
               <option value="">No prerequisite</option>
-              {packs.map((pack) => (
+              {packs.filter((pack) => pack.dialect === packForm.dialect).map((pack) => (
                 <option key={pack.id} value={pack.id}>{pack.title}</option>
               ))}
             </select>
@@ -892,6 +899,9 @@ function PromptManager({
                 <p className="mt-1 text-xs font-bold text-slate-500">
                   {activeCount(pack)} active / {pack.prompts.length} total
                 </p>
+                <span className="mt-3 mr-2 inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                  {pack.dialect}
+                </span>
                 <span className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-black ${pack.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                   {pack.is_active ? "Active" : "Inactive"}
                 </span>
@@ -904,6 +914,7 @@ function PromptManager({
               <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-lg font-black text-slate-950">{selectedPack.title}</h3>
+                  <p className="mt-1 text-xs font-black uppercase tracking-wide text-blue-700">{selectedPack.dialect}</p>
                   <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">{selectedPack.description || "No description yet."}</p>
                 </div>
                 <button className="admin-action admin-action-secondary" disabled={busy} onClick={() => void onTogglePack(selectedPack)}>

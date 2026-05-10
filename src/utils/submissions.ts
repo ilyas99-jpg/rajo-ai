@@ -9,8 +9,7 @@ export const createRegisteredUser = (
   formData: RegistrationFormData,
 ): RegisteredUser => {
   const userId = crypto.randomUUID();
-  const dialect =
-    formData.dialect === "Other" ? formData.dialectOther.trim() : formData.dialect.trim();
+  const dialect = formData.dialect.trim();
 
   if (!dialect) {
     throw new Error("Please select your Somali dialect before continuing.");

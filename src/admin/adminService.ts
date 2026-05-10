@@ -313,6 +313,7 @@ export type PromptPackInput = {
   title: string;
   description: string;
   language: string;
+  dialect: string;
   unlockOrder: number;
   requiredPreviousPackId: string;
 };
@@ -334,6 +335,7 @@ export async function fetchAdminPromptPacks(): Promise<AdminPromptPack[]> {
       title,
       description,
       language,
+      dialect,
       unlock_order,
       required_previous_pack_id,
       is_active,
@@ -362,6 +364,7 @@ export async function createPromptPack(input: PromptPackInput): Promise<void> {
     title: input.title.trim(),
     description: input.description.trim(),
     language: input.language.trim() || "so",
+    dialect: input.dialect.trim() || "Maxaa Tiri",
     unlock_order: input.unlockOrder,
     required_previous_pack_id: input.requiredPreviousPackId || null,
   });
@@ -378,6 +381,7 @@ export async function updatePromptPack(
   if (changes.title !== undefined) payload.title = changes.title.trim();
   if (changes.description !== undefined) payload.description = changes.description.trim();
   if (changes.language !== undefined) payload.language = changes.language.trim() || "so";
+  if (changes.dialect !== undefined) payload.dialect = changes.dialect.trim() || "Maxaa Tiri";
   if (changes.unlockOrder !== undefined) payload.unlock_order = changes.unlockOrder;
   if (changes.requiredPreviousPackId !== undefined) {
     payload.required_previous_pack_id = changes.requiredPreviousPackId || null;

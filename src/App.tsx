@@ -22,12 +22,8 @@ type AuthMode = "register" | "login";
 type RecorderState = "idle" | "starting" | "recording" | "recorded";
 
 const DIALECT_OPTIONS = [
-  "Maxaa tiri",
-  "Maay Maay",
-  "Banaadiri",
-  "Northern Somali",
-  "Reer Xamar / Benadiri",
-  "Other",
+  "Maxaa Tiri",
+  "May May",
 ];
 
 const AGE_RANGE_OPTIONS: AgeRange[] = [
@@ -93,6 +89,7 @@ function VoiceCollectionApp() {
   const [prompts, setPrompts] = useState<VoicePrompt[]>([]);
   const [promptLoading, setPromptLoading] = useState(false);
   const [unlockNotice, setUnlockNotice] = useState("");
+  const [promptProgressMessage, setPromptProgressMessage] = useState("");
   const [formData, setFormData] = useState(initialFormData);
   const postAuthRef = useRef<View>("dashboard");
   const [loginEmail, setLoginEmail] = useState("");
@@ -126,7 +123,7 @@ function VoiceCollectionApp() {
           setUser(profile.user);
           setDonorId(profile.donorId);
           setLoginEmail(profile.user.email);
-          await loadProgress(profile.donorId, profile.user.authUserId);
+          await loadProgress(profile.donorId, profile.user.authUserId, profile.user.dialect);
           if (startingPath === "/record") setView("record");
           else if (startingPath !== "/about") setView("dashboard");
         }
@@ -154,7 +151,7 @@ function VoiceCollectionApp() {
     setView(nextView);
   }
 
-  async function loadProgress(id: string, authUserId?: string) {
+  async function loadProgress(id: string, authUserId?: string, dialect?: string) {
     setPromptLoading(true);
     try {
       const progress = await fetchDonorProgress(id);
@@ -162,10 +159,12 @@ function VoiceCollectionApp() {
       setCompletedPromptIds(progress.completedSentenceIds);
 
       const promptAuthId = authUserId ?? user?.authUserId;
-      if (promptAuthId) {
-        const workspace = await fetchPromptWorkspace(promptAuthId, progress.completedSentenceIds);
+      const promptDialect = dialect ?? user?.dialect;
+      if (promptAuthId && promptDialect) {
+        const workspace = await fetchPromptWorkspace(promptAuthId, id, promptDialect);
         setPromptPacks(workspace.packs);
         setPrompts(workspace.prompts);
+        setPromptProgressMessage(workspace.progressMessage);
       }
     } finally {
       setPromptLoading(false);
@@ -185,7 +184,7 @@ function VoiceCollectionApp() {
       setFormData(initialFormData);
       setLoginEmail(profile.user.email);
       setLoginPassword("");
-      await loadProgress(profile.donorId, profile.user.authUserId);
+      await loadProgress(profile.donorId, profile.user.authUserId, profile.user.dialect);
       const dest = postAuthRef.current;
       postAuthRef.current = "dashboard";
       navigate(dest, dest === "record" ? "/record" : "/");
@@ -206,7 +205,7 @@ function VoiceCollectionApp() {
       setUser(profile.user);
       setDonorId(profile.donorId);
       setLoginPassword("");
-      await loadProgress(profile.donorId, profile.user.authUserId);
+      await loadProgress(profile.donorId, profile.user.authUserId, profile.user.dialect);
       const dest = postAuthRef.current;
       postAuthRef.current = "dashboard";
       navigate(dest, dest === "record" ? "/record" : "/");
@@ -226,6 +225,7 @@ function VoiceCollectionApp() {
     setPromptPacks([]);
     setPrompts([]);
     setUnlockNotice("");
+    setPromptProgressMessage("");
     navigate("home", "/");
   }
 
@@ -248,16 +248,21 @@ function VoiceCollectionApp() {
       : [...completedPromptIds, prompt.sentenceId];
     setCompletedPromptIds(nextCompleted);
 
-    const unlock = await completePromptPackIfReady(user.authUserId, donorId, prompt.packId);
+    const unlock = await completePromptPackIfReady(user.authUserId, donorId, prompt.packId, user.dialect);
     if (unlock?.unlocked) {
+      setPromptProgressMessage("New prompts unlocked");
       setUnlockNotice(
         `New prompts unlocked|You completed your first contribution set. ${unlock.packTitle} is now available.`,
       );
+    } else if (unlock?.allCompleted) {
+      setPromptProgressMessage("All prompt sets completed");
+      setUnlockNotice("All prompt sets completed|You completed every active prompt set. Thank you for building the Somali voice dataset.");
     }
 
-    const workspace = await fetchPromptWorkspace(user.authUserId, nextCompleted);
+    const workspace = await fetchPromptWorkspace(user.authUserId, donorId, user.dialect);
     setPromptPacks(workspace.packs);
     setPrompts(workspace.prompts);
+    setPromptProgressMessage(workspace.progressMessage);
   }
 
   function startFromHome(mode: AuthMode, afterAuth: View = "dashboard") {
@@ -313,6 +318,7 @@ function VoiceCollectionApp() {
             history={history}
             promptLoading={promptLoading}
             promptPacks={promptPacks}
+            promptProgressMessage={promptProgressMessage}
             prompts={prompts}
             stats={stats}
             user={user}
@@ -904,7 +910,7 @@ function AuthPage({
                   onFormChange({
                     ...formData,
                     dialect: event.target.value,
-                    dialectOther: event.target.value === "Other" ? formData.dialectOther : "",
+                    dialectOther: "",
                   })
                 }
               >
@@ -916,15 +922,6 @@ function AuthPage({
                 ))}
               </select>
             </label>
-            {formData.dialect === "Other" && (
-              <TextField
-                label="Other dialect"
-                placeholder="Type your dialect"
-                required
-                value={formData.dialectOther}
-                onChange={(value) => onFormChange({ ...formData, dialectOther: value })}
-              />
-            )}
             <label className="flex gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-slate-700">
               <input checked={formData.consent} className="mt-1 h-4 w-4" required type="checkbox" onChange={(event) => onFormChange({ ...formData, consent: event.target.checked })} />
               I consent to Rajo AI collecting my submitted voice recordings for ethical Somali voice AI.
@@ -954,6 +951,7 @@ function Dashboard({
   history,
   promptLoading,
   promptPacks,
+  promptProgressMessage,
   prompts,
   stats,
   user,
@@ -963,6 +961,7 @@ function Dashboard({
   history: RecordingHistoryItem[];
   promptLoading: boolean;
   promptPacks: PromptPack[];
+  promptProgressMessage: string;
   prompts: VoicePrompt[];
   stats: { total: number; minutes: number; approved: number; pending: number };
   user: RegisteredUser;
@@ -976,7 +975,9 @@ function Dashboard({
 
   const streak = useMemo(() => calculateStreak(history), [history]);
   const todayCount = useMemo(() => countTodayRecordings(history), [history]);
-  const currentPack = promptPacks.find((pack) => !pack.completedAt) ?? promptPacks[promptPacks.length - 1];
+  const currentPack =
+    promptPacks.find((pack) => pack.promptCount === 0 || pack.completedPromptCount < pack.promptCount) ??
+    promptPacks[promptPacks.length - 1];
   const totalPrompts = currentPack?.promptCount ?? 0;
   const completedCount = Math.min(currentPack?.completedPromptCount ?? 0, totalPrompts);
   const remainingPrompts = Math.max(totalPrompts - completedCount, 0);
@@ -1060,11 +1061,11 @@ function Dashboard({
             />
           </div>
           <p className="mt-3 text-sm leading-6 text-slate-500">
-            {completedCount === 0
+            {promptProgressMessage || (completedCount === 0
               ? "Record your first prompt to begin contributing to the Somali voice dataset."
               : completedCount < totalPrompts
                 ? `${remainingPrompts} prompts remaining in this pack — each one adds to a language dataset that will last for generations.`
-                : "This prompt pack is complete. New prompts will appear when the next set unlocks."}
+                : "This prompt pack is complete. New prompts will appear when the next set unlocks.")}
           </p>
         </div>
 

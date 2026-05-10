@@ -51,6 +51,7 @@ export type PromptPack = {
   title: string;
   description: string | null;
   language: string;
+  dialect: string;
   unlockOrder: number;
   requiredPreviousPackId: string | null;
   isActive: boolean;

@@ -39,6 +39,7 @@ type PromptPackRow = {
   title: string;
   description: string | null;
   language: string;
+  dialect: string | null;
   unlock_order: number;
   required_previous_pack_id: string | null;
   is_active: boolean;
@@ -257,6 +258,7 @@ export async function fetchDonorProgress(donorId: string): Promise<ProgressSnaps
 export type PromptWorkspace = {
   packs: PromptPack[];
   prompts: VoicePrompt[];
+  progressMessage: string;
 };
 
 const mapPromptPackRow = (row: PromptPackRow): PromptPack => ({
@@ -265,6 +267,7 @@ const mapPromptPackRow = (row: PromptPackRow): PromptPack => ({
   title: row.title,
   description: row.description,
   language: row.language,
+  dialect: row.dialect ?? "Maxaa Tiri",
   unlockOrder: row.unlock_order,
   requiredPreviousPackId: row.required_previous_pack_id,
   isActive: row.is_active,
@@ -285,10 +288,11 @@ const mapPromptRow = (row: PromptRow): VoicePrompt => ({
 
 export async function fetchPromptWorkspace(
   authUserId: string,
-  completedPromptIds: string[],
+  donorId: string,
+  userDialect: string,
 ): Promise<PromptWorkspace> {
   const sb = getSupabase();
-  await ensureInitialPromptPackUnlocked(authUserId);
+  await ensureInitialPromptPackUnlocked(authUserId, userDialect);
 
   const { data: progressRows, error: progressError } = await sb
     .from("user_prompt_progress")
@@ -300,6 +304,7 @@ export async function fetchPromptWorkspace(
         title,
         description,
         language,
+        dialect,
         unlock_order,
         required_previous_pack_id,
         is_active,
@@ -316,10 +321,10 @@ export async function fetchPromptWorkspace(
       const pack = Array.isArray(row.prompt_packs) ? row.prompt_packs[0] : row.prompt_packs;
       return pack ? mapPromptPackRow({ ...pack, completed_at: row.completed_at } as PromptPackRow) : null;
     })
-    .filter((pack): pack is PromptPack => Boolean(pack?.isActive))
+    .filter((pack): pack is PromptPack => Boolean(pack?.isActive && pack.dialect === userDialect))
     .sort((a, b) => a.unlockOrder - b.unlockOrder);
 
-  if (packs.length === 0) return { packs: [], prompts: [] };
+  if (packs.length === 0) return { packs: [], prompts: [], progressMessage: "" };
 
   const packIds = packs.map((pack) => pack.id);
   const { data: promptRows, error: promptError } = await sb
@@ -331,16 +336,23 @@ export async function fetchPromptWorkspace(
 
   if (promptError) throw new Error(`Could not load prompts: ${promptError.message}`);
 
-  const completedSet = new Set(completedPromptIds);
   const promptList = ((promptRows ?? []) as unknown as PromptRow[]).map(mapPromptRow);
   const promptsByPack = new Map<string, VoicePrompt[]>();
+  const packIdByPromptId = new Map<string, string>();
   for (const prompt of promptList) {
     promptsByPack.set(prompt.packId, [...(promptsByPack.get(prompt.packId) ?? []), prompt]);
+    packIdByPromptId.set(prompt.sentenceId, prompt.packId);
   }
+
+  const completedPromptIdsByPack = await fetchCompletedPromptIdsByPack(
+    donorId,
+    Array.from(packIdByPromptId.keys()),
+    packIdByPromptId,
+  );
 
   const packsWithCompletion = packs.map((pack) => {
     const packPrompts = promptsByPack.get(pack.id) ?? [];
-    const completedPromptCount = packPrompts.filter((prompt) => completedSet.has(prompt.sentenceId)).length;
+    const completedPromptCount = completedPromptIdsByPack.get(pack.id)?.size ?? 0;
     return {
       ...pack,
       promptCount: packPrompts.length,
@@ -349,36 +361,91 @@ export async function fetchPromptWorkspace(
   });
 
   const currentPack =
-    packsWithCompletion.find((pack) => !pack.completedAt) ??
+    packsWithCompletion.find((pack) => pack.promptCount === 0 || pack.completedPromptCount < pack.promptCount) ??
     packsWithCompletion[packsWithCompletion.length - 1];
   const currentPackPrompts = currentPack ? promptsByPack.get(currentPack.id) ?? [] : [];
+  const currentCompletedSet = completedPromptIdsByPack.get(currentPack?.id ?? "") ?? new Set<string>();
   const currentPackComplete =
     currentPackPrompts.length > 0 &&
-    currentPackPrompts.every((prompt) => completedSet.has(prompt.sentenceId));
+    currentPackPrompts.every((prompt) => currentCompletedSet.has(prompt.sentenceId));
+
+  if (currentPack && currentPackComplete && !currentPack.completedAt) {
+    const unlock = await completePromptPackIfReady(authUserId, donorId, currentPack.id, userDialect);
+    if (unlock?.unlocked) {
+      const workspace = await fetchPromptWorkspace(authUserId, donorId, userDialect);
+      return { ...workspace, progressMessage: "New prompts unlocked" };
+    }
+    if (unlock?.allCompleted) {
+      const workspace = await fetchPromptWorkspace(authUserId, donorId, userDialect);
+      return { ...workspace, progressMessage: "All prompt sets completed" };
+    }
+  }
+
   const activePrompts = currentPackComplete
     ? currentPackPrompts
-    : currentPackPrompts.filter((prompt) => !completedSet.has(prompt.sentenceId));
+    : currentPackPrompts.filter((prompt) => !currentCompletedSet.has(prompt.sentenceId));
+  const allPromptSetsCompleted =
+    packsWithCompletion.length > 0 &&
+    packsWithCompletion.every((pack) => pack.promptCount > 0 && pack.completedPromptCount >= pack.promptCount);
 
-  return { packs: packsWithCompletion, prompts: activePrompts };
+  return {
+    packs: packsWithCompletion,
+    prompts: activePrompts,
+    progressMessage: allPromptSetsCompleted ? "All prompt sets completed" : "",
+  };
 }
 
-async function ensureInitialPromptPackUnlocked(authUserId: string): Promise<void> {
+async function fetchCompletedPromptIdsByPack(
+  donorId: string,
+  promptIds: string[],
+  packIdByPromptId: Map<string, string>,
+): Promise<Map<string, Set<string>>> {
+  const completedPromptIdsByPack = new Map<string, Set<string>>();
+  if (promptIds.length === 0) return completedPromptIdsByPack;
+
+  const { data, error } = await getSupabase()
+    .from("voice_recordings")
+    .select("sentence_id")
+    .eq("donor_id", donorId)
+    .in("sentence_id", promptIds);
+
+  if (error) throw new Error(`Could not count completed prompt pack progress: ${error.message}`);
+
+  for (const row of data ?? []) {
+    const sentenceId = row.sentence_id as string;
+    const packId = packIdByPromptId.get(sentenceId);
+    if (!packId) continue;
+
+    const completedSet = completedPromptIdsByPack.get(packId) ?? new Set<string>();
+    completedSet.add(sentenceId);
+    completedPromptIdsByPack.set(packId, completedSet);
+  }
+
+  return completedPromptIdsByPack;
+}
+
+async function ensureInitialPromptPackUnlocked(authUserId: string, userDialect: string): Promise<void> {
   if (!authUserId) return;
 
   const sb = getSupabase();
   const { data: existing, error: existingError } = await sb
     .from("user_prompt_progress")
-    .select("id")
+    .select("id, prompt_packs ( dialect )")
     .eq("user_id", authUserId)
-    .limit(1);
+    .limit(25);
 
   if (existingError) throw new Error(`Could not load prompt progress: ${existingError.message}`);
-  if ((existing ?? []).length > 0) return;
+  const hasDialectProgress = (existing ?? []).some((row) => {
+    const pack = Array.isArray(row.prompt_packs) ? row.prompt_packs[0] : row.prompt_packs;
+    return pack?.dialect === userDialect;
+  });
+  if (hasDialectProgress) return;
 
   const { data: firstPack, error: packError } = await sb
     .from("prompt_packs")
     .select("id")
     .eq("is_active", true)
+    .eq("dialect", userDialect)
     .order("unlock_order", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -398,7 +465,8 @@ async function ensureInitialPromptPackUnlocked(authUserId: string): Promise<void
 
 export type PromptUnlockResult = {
   unlocked: boolean;
-  packTitle: string;
+  allCompleted: boolean;
+  packTitle: string | null;
   completedPackTitle: string;
 };
 
@@ -406,14 +474,16 @@ export async function completePromptPackIfReady(
   authUserId: string,
   donorId: string,
   packId: string,
+  userDialect: string,
 ): Promise<PromptUnlockResult | null> {
   const sb = getSupabase();
 
   const { data: pack, error: packError } = await sb
     .from("prompt_packs")
-    .select("id, title, unlock_order")
+    .select("id, title, unlock_order, dialect")
     .eq("id", packId)
     .eq("is_active", true)
+    .eq("dialect", userDialect)
     .maybeSingle();
 
   if (packError) throw new Error(`Could not check prompt pack: ${packError.message}`);
@@ -455,13 +525,21 @@ export async function completePromptPackIfReady(
     .from("prompt_packs")
     .select("id, title")
     .eq("is_active", true)
+    .eq("dialect", userDialect)
     .gt("unlock_order", pack.unlock_order)
     .order("unlock_order", { ascending: true })
     .limit(1)
     .maybeSingle();
 
   if (nextError) throw new Error(`Could not check next prompt pack: ${nextError.message}`);
-  if (!nextPack?.id) return null;
+  if (!nextPack?.id) {
+    return {
+      unlocked: false,
+      allCompleted: true,
+      packTitle: null,
+      completedPackTitle: pack.title as string,
+    };
+  }
 
   const { error: unlockError } = await sb.from("user_prompt_progress").insert({
     user_id: authUserId,
@@ -474,6 +552,7 @@ export async function completePromptPackIfReady(
 
   return {
     unlocked: true,
+    allCompleted: false,
     packTitle: nextPack.title as string,
     completedPackTitle: pack.title as string,
   };

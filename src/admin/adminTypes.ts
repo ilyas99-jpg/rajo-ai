@@ -70,6 +70,7 @@ export type AdminPromptPack = {
   title: string;
   description: string | null;
   language: string;
+  dialect: string;
   unlock_order: number;
   required_previous_pack_id: string | null;
   is_active: boolean;
