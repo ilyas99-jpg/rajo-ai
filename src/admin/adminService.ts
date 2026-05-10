@@ -1,5 +1,5 @@
 import { getSupabase } from "../lib/supabase";
-import type { AdminDashboardData, AdminDonor, AdminRecording, ReviewStatus } from "./adminTypes";
+import type { AdminDashboardData, AdminDonor, AdminPromptPack, AdminRecording, ReviewStatus } from "./adminTypes";
 
 type DonorRelation = NonNullable<AdminRecording["donor"]>;
 type RecordingRow = Omit<AdminRecording, "donor" | "signed_audio_url" | "audio_error"> & {
@@ -306,4 +306,208 @@ export async function exportDatasetCsv(options: ExportOptions): Promise<void> {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+export type PromptPackInput = {
+  slug: string;
+  title: string;
+  description: string;
+  language: string;
+  unlockOrder: number;
+  requiredPreviousPackId: string;
+};
+
+export type PromptInput = {
+  packId: string;
+  text: string;
+  category: string;
+  difficulty: string;
+  orderNumber: number;
+};
+
+export async function fetchAdminPromptPacks(): Promise<AdminPromptPack[]> {
+  const { data, error } = await getSupabase()
+    .from("prompt_packs")
+    .select(`
+      id,
+      slug,
+      title,
+      description,
+      language,
+      unlock_order,
+      required_previous_pack_id,
+      is_active,
+      created_at,
+      prompts (
+        id,
+        pack_id,
+        text,
+        category,
+        difficulty,
+        order_number,
+        is_active,
+        created_at
+      )
+    `)
+    .order("unlock_order", { ascending: true })
+    .order("order_number", { referencedTable: "prompts", ascending: true });
+
+  if (error) throw new Error(`Could not load prompt packs: ${error.message}`);
+  return (data ?? []) as unknown as AdminPromptPack[];
+}
+
+export async function createPromptPack(input: PromptPackInput): Promise<void> {
+  const { error } = await getSupabase().from("prompt_packs").insert({
+    slug: input.slug.trim(),
+    title: input.title.trim(),
+    description: input.description.trim(),
+    language: input.language.trim() || "so",
+    unlock_order: input.unlockOrder,
+    required_previous_pack_id: input.requiredPreviousPackId || null,
+  });
+
+  if (error) throw new Error(`Could not create prompt pack: ${error.message}`);
+}
+
+export async function updatePromptPack(
+  packId: string,
+  changes: Partial<PromptPackInput> & { isActive?: boolean },
+): Promise<void> {
+  const payload: Record<string, string | number | boolean | null> = {};
+  if (changes.slug !== undefined) payload.slug = changes.slug.trim();
+  if (changes.title !== undefined) payload.title = changes.title.trim();
+  if (changes.description !== undefined) payload.description = changes.description.trim();
+  if (changes.language !== undefined) payload.language = changes.language.trim() || "so";
+  if (changes.unlockOrder !== undefined) payload.unlock_order = changes.unlockOrder;
+  if (changes.requiredPreviousPackId !== undefined) {
+    payload.required_previous_pack_id = changes.requiredPreviousPackId || null;
+  }
+  if (changes.isActive !== undefined) payload.is_active = changes.isActive;
+
+  const { error } = await getSupabase().from("prompt_packs").update(payload).eq("id", packId);
+  if (error) throw new Error(`Could not update prompt pack: ${error.message}`);
+}
+
+export async function createPrompt(input: PromptInput): Promise<void> {
+  const { error } = await getSupabase().from("prompts").insert({
+    pack_id: input.packId,
+    text: input.text.trim(),
+    category: input.category.trim() || null,
+    difficulty: input.difficulty.trim() || null,
+    order_number: input.orderNumber,
+  });
+
+  if (error) throw new Error(`Could not add prompt: ${error.message}`);
+}
+
+export async function updatePrompt(
+  promptId: string,
+  changes: Partial<PromptInput> & { isActive?: boolean },
+): Promise<void> {
+  const payload: Record<string, string | number | boolean | null> = {};
+  if (changes.packId !== undefined) payload.pack_id = changes.packId;
+  if (changes.text !== undefined) payload.text = changes.text.trim();
+  if (changes.category !== undefined) payload.category = changes.category.trim() || null;
+  if (changes.difficulty !== undefined) payload.difficulty = changes.difficulty.trim() || null;
+  if (changes.orderNumber !== undefined) payload.order_number = changes.orderNumber;
+  if (changes.isActive !== undefined) payload.is_active = changes.isActive;
+
+  const { error } = await getSupabase().from("prompts").update(payload).eq("id", promptId);
+  if (error) throw new Error(`Could not update prompt: ${error.message}`);
+}
+
+export async function deletePrompt(promptId: string): Promise<void> {
+  const { error } = await getSupabase().from("prompts").delete().eq("id", promptId);
+  if (error) throw new Error(`Could not delete prompt: ${error.message}`);
+}
+
+export async function uploadPromptsCsv(packId: string, csvText: string): Promise<number> {
+  const rows = parsePromptCsv(csvText);
+  if (rows.length === 0) return 0;
+
+  const { data: existing, error: existingError } = await getSupabase()
+    .from("prompts")
+    .select("order_number")
+    .eq("pack_id", packId)
+    .order("order_number", { ascending: false })
+    .limit(1);
+
+  if (existingError) throw new Error(`Could not inspect prompt pack: ${existingError.message}`);
+  const start = Number(existing?.[0]?.order_number ?? 0);
+
+  const { error } = await getSupabase().from("prompts").insert(
+    rows.map((row, index) => ({
+      pack_id: packId,
+      text: row.text,
+      category: row.category || null,
+      difficulty: row.difficulty || null,
+      order_number: row.orderNumber ?? start + index + 1,
+    })),
+  );
+
+  if (error) throw new Error(`CSV upload failed: ${error.message}`);
+  return rows.length;
+}
+
+function parsePromptCsv(csvText: string): Array<{
+  text: string;
+  category: string;
+  difficulty: string;
+  orderNumber: number | null;
+}> {
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return [];
+
+  const firstCells = splitCsvLine(lines[0]).map((cell) => cell.toLowerCase());
+  const hasHeader = firstCells.includes("text") || firstCells.includes("prompt");
+  const header = hasHeader ? firstCells : ["text", "category", "difficulty", "order_number"];
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+
+  const textIndex = Math.max(header.indexOf("text"), header.indexOf("prompt"));
+  const categoryIndex = header.indexOf("category");
+  const difficultyIndex = header.indexOf("difficulty");
+  const orderIndex = header.indexOf("order_number");
+
+  return dataLines
+    .map((line, index) => {
+      const cells = splitCsvLine(line);
+      const text = cells[textIndex >= 0 ? textIndex : 0]?.trim() ?? "";
+      if (!text) return null;
+      const orderValue = orderIndex >= 0 ? Number(cells[orderIndex]) : NaN;
+      return {
+        text,
+        category: categoryIndex >= 0 ? cells[categoryIndex]?.trim() ?? "" : "",
+        difficulty: difficultyIndex >= 0 ? cells[difficultyIndex]?.trim() ?? "" : "",
+        orderNumber: Number.isFinite(orderValue) ? orderValue : index + 1,
+      };
+    })
+    .filter((row): row is { text: string; category: string; difficulty: string; orderNumber: number } => Boolean(row));
+}
+
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      i += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  cells.push(current);
+  return cells;
 }

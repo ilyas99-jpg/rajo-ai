@@ -1,14 +1,21 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
+  createPrompt,
+  createPromptPack,
+  deletePrompt,
   deleteRecording,
   exportDatasetCsv,
   fetchAdminDashboardData,
+  fetchAdminPromptPacks,
   updateRecordingQualityScore,
+  updatePrompt,
+  updatePromptPack,
   updateRecordingStatus,
+  uploadPromptsCsv,
 } from "./adminService";
 import { getSupabase } from "../lib/supabase";
-import type { AdminDonor, AdminRecording, ReviewStatus } from "./adminTypes";
+import type { AdminDonor, AdminPromptPack, AdminRecording, ReviewStatus } from "./adminTypes";
 
 // The one and only authorized admin email. Checked client-side AND enforced
 // server-side by Supabase RLS policies (auth.email() = ADMIN_EMAIL).
@@ -58,6 +65,9 @@ export function AdminDashboard() {
   const [exportLoading, setExportLoading] = useState(false);
   const [exportError, setExportError] = useState("");
   const [includeSignedUrls, setIncludeSignedUrls] = useState(false);
+  const [promptPacks, setPromptPacks] = useState<AdminPromptPack[]>([]);
+  const [promptError, setPromptError] = useState("");
+  const [promptBusy, setPromptBusy] = useState(false);
 
   // Resolve Supabase Auth session on mount and keep it in sync.
   useEffect(() => {
@@ -95,8 +105,20 @@ export function AdminDashboard() {
     }
   };
 
+  const loadPromptManager = async () => {
+    setPromptError("");
+    try {
+      setPromptPacks(await fetchAdminPromptPacks());
+    } catch (err) {
+      setPromptError(err instanceof Error ? err.message : "Could not load prompt manager.");
+    }
+  };
+
   useEffect(() => {
-    if (isAdmin) void loadDashboard();
+    if (isAdmin) {
+      void loadDashboard();
+      void loadPromptManager();
+    }
   }, [isAdmin]);
 
   const totalDurationSeconds = useMemo(
@@ -393,6 +415,97 @@ export function AdminDashboard() {
           onExport={() => void handleExport()}
           onToggleSignedUrls={setIncludeSignedUrls}
         />
+        <PromptManager
+          busy={promptBusy}
+          error={promptError}
+          packs={promptPacks}
+          onCreatePack={async (input) => {
+            setPromptBusy(true);
+            setPromptError("");
+            try {
+              await createPromptPack(input);
+              await loadPromptManager();
+            } catch (err) {
+              setPromptError(err instanceof Error ? err.message : "Could not create prompt pack.");
+            } finally {
+              setPromptBusy(false);
+            }
+          }}
+          onCreatePrompt={async (input) => {
+            setPromptBusy(true);
+            setPromptError("");
+            try {
+              await createPrompt(input);
+              await loadPromptManager();
+            } catch (err) {
+              setPromptError(err instanceof Error ? err.message : "Could not add prompt.");
+            } finally {
+              setPromptBusy(false);
+            }
+          }}
+          onTogglePack={async (pack) => {
+            setPromptBusy(true);
+            setPromptError("");
+            try {
+              await updatePromptPack(pack.id, { isActive: !pack.is_active });
+              await loadPromptManager();
+            } catch (err) {
+              setPromptError(err instanceof Error ? err.message : "Could not update prompt pack.");
+            } finally {
+              setPromptBusy(false);
+            }
+          }}
+          onTogglePrompt={async (prompt) => {
+            setPromptBusy(true);
+            setPromptError("");
+            try {
+              await updatePrompt(prompt.id, { isActive: !prompt.is_active });
+              await loadPromptManager();
+            } catch (err) {
+              setPromptError(err instanceof Error ? err.message : "Could not update prompt.");
+            } finally {
+              setPromptBusy(false);
+            }
+          }}
+          onDeletePrompt={async (promptId) => {
+            const confirmed = window.confirm("Delete this prompt permanently?");
+            if (!confirmed) return;
+            setPromptBusy(true);
+            setPromptError("");
+            try {
+              await deletePrompt(promptId);
+              await loadPromptManager();
+            } catch (err) {
+              setPromptError(err instanceof Error ? err.message : "Could not delete prompt.");
+            } finally {
+              setPromptBusy(false);
+            }
+          }}
+          onUpdatePrompt={async (promptId, changes) => {
+            setPromptBusy(true);
+            setPromptError("");
+            try {
+              await updatePrompt(promptId, changes);
+              await loadPromptManager();
+            } catch (err) {
+              setPromptError(err instanceof Error ? err.message : "Could not edit prompt.");
+            } finally {
+              setPromptBusy(false);
+            }
+          }}
+          onUploadCsv={async (packId, csv) => {
+            setPromptBusy(true);
+            setPromptError("");
+            try {
+              await uploadPromptsCsv(packId, csv);
+              await loadPromptManager();
+            } catch (err) {
+              setPromptError(err instanceof Error ? err.message : "Could not upload CSV.");
+            } finally {
+              setPromptBusy(false);
+            }
+          }}
+        />
 
         <section className="rounded-3xl border border-blue-100 bg-white p-4 shadow-soft">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -640,6 +753,286 @@ function RecordingRow({
             Delete
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PromptManager({
+  busy,
+  error,
+  packs,
+  onCreatePack,
+  onCreatePrompt,
+  onTogglePack,
+  onTogglePrompt,
+  onDeletePrompt,
+  onUpdatePrompt,
+  onUploadCsv,
+}: {
+  busy: boolean;
+  error: string;
+  packs: AdminPromptPack[];
+  onCreatePack: (input: {
+    slug: string;
+    title: string;
+    description: string;
+    language: string;
+    unlockOrder: number;
+    requiredPreviousPackId: string;
+  }) => Promise<void>;
+  onCreatePrompt: (input: {
+    packId: string;
+    text: string;
+    category: string;
+    difficulty: string;
+    orderNumber: number;
+  }) => Promise<void>;
+  onTogglePack: (pack: AdminPromptPack) => Promise<void>;
+  onTogglePrompt: (prompt: AdminPromptPack["prompts"][number]) => Promise<void>;
+  onDeletePrompt: (promptId: string) => Promise<void>;
+  onUpdatePrompt: (
+    promptId: string,
+    changes: { text: string; category: string; difficulty: string; orderNumber: number },
+  ) => Promise<void>;
+  onUploadCsv: (packId: string, csv: string) => Promise<void>;
+}) {
+  const [packForm, setPackForm] = useState({
+    slug: "",
+    title: "",
+    description: "",
+    language: "so",
+    unlockOrder: 1,
+    requiredPreviousPackId: "",
+  });
+  const [selectedPackId, setSelectedPackId] = useState("");
+  const [promptForm, setPromptForm] = useState({
+    text: "",
+    category: "",
+    difficulty: "",
+    orderNumber: 1,
+  });
+  const [csvText, setCsvText] = useState("");
+
+  const selectedPack = packs.find((pack) => pack.id === selectedPackId) ?? packs[0];
+  const activeCount = (pack: AdminPromptPack) => pack.prompts.filter((prompt) => prompt.is_active).length;
+
+  useEffect(() => {
+    if (!selectedPackId && packs[0]) setSelectedPackId(packs[0].id);
+  }, [packs, selectedPackId]);
+
+  return (
+    <section className="rounded-3xl border border-blue-100 bg-white p-4 shadow-soft">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wide text-blue-700">Prompt Manager</p>
+          <h2 className="mt-1 text-xl font-black text-slate-950">Prompt packs and recording prompts</h2>
+          <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
+            Manage RAJO AI prompt sets from Supabase. Contributors only receive active prompts from unlocked packs.
+          </p>
+        </div>
+        <div className="rounded-2xl bg-blue-50 px-4 py-3 text-sm font-black text-blue-700">
+          {packs.reduce((sum, pack) => sum + activeCount(pack), 0)} active prompts
+        </div>
+      </div>
+
+      {error && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>}
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[360px_1fr]">
+        <form
+          className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onCreatePack(packForm).then(() =>
+              setPackForm({
+                slug: "",
+                title: "",
+                description: "",
+                language: "so",
+                unlockOrder: packs.length + 2,
+                requiredPreviousPackId: "",
+              }),
+            );
+          }}
+        >
+          <h3 className="font-black text-slate-950">Create prompt pack</h3>
+          <div className="mt-3 space-y-2">
+            <input className="admin-field" placeholder="slug" required value={packForm.slug} onChange={(e) => setPackForm({ ...packForm, slug: e.target.value })} />
+            <input className="admin-field" placeholder="Title" required value={packForm.title} onChange={(e) => setPackForm({ ...packForm, title: e.target.value })} />
+            <textarea className="admin-field min-h-20" placeholder="Description" value={packForm.description} onChange={(e) => setPackForm({ ...packForm, description: e.target.value })} />
+            <div className="grid grid-cols-2 gap-2">
+              <input className="admin-field" placeholder="Language" value={packForm.language} onChange={(e) => setPackForm({ ...packForm, language: e.target.value })} />
+              <input className="admin-field" min={1} type="number" value={packForm.unlockOrder} onChange={(e) => setPackForm({ ...packForm, unlockOrder: Number(e.target.value) })} />
+            </div>
+            <select className="admin-field" value={packForm.requiredPreviousPackId} onChange={(e) => setPackForm({ ...packForm, requiredPreviousPackId: e.target.value })}>
+              <option value="">No prerequisite</option>
+              {packs.map((pack) => (
+                <option key={pack.id} value={pack.id}>{pack.title}</option>
+              ))}
+            </select>
+            <button className="admin-action admin-action-primary w-full" disabled={busy} type="submit">
+              Create Pack
+            </button>
+          </div>
+        </form>
+
+        <div className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-3">
+            {packs.map((pack) => (
+              <button
+                className={`rounded-2xl border p-4 text-left transition ${
+                  selectedPack?.id === pack.id ? "border-blue-300 bg-blue-50" : "border-slate-100 bg-white hover:bg-slate-50"
+                }`}
+                key={pack.id}
+                onClick={() => setSelectedPackId(pack.id)}
+                type="button"
+              >
+                <p className="text-xs font-black uppercase tracking-wide text-blue-700">Order {pack.unlock_order}</p>
+                <h3 className="mt-1 font-black text-slate-950">{pack.title}</h3>
+                <p className="mt-1 text-xs font-bold text-slate-500">
+                  {activeCount(pack)} active / {pack.prompts.length} total
+                </p>
+                <span className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-black ${pack.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                  {pack.is_active ? "Active" : "Inactive"}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {selectedPack && (
+            <div className="rounded-2xl border border-slate-100 p-4">
+              <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-slate-950">{selectedPack.title}</h3>
+                  <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">{selectedPack.description || "No description yet."}</p>
+                </div>
+                <button className="admin-action admin-action-secondary" disabled={busy} onClick={() => void onTogglePack(selectedPack)}>
+                  {selectedPack.is_active ? "Deactivate Pack" : "Activate Pack"}
+                </button>
+              </div>
+
+              <form
+                className="mt-4 grid gap-2 lg:grid-cols-[1fr_130px_130px_100px_auto]"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void onCreatePrompt({ packId: selectedPack.id, ...promptForm }).then(() =>
+                    setPromptForm({ text: "", category: "", difficulty: "", orderNumber: selectedPack.prompts.length + 2 }),
+                  );
+                }}
+              >
+                <input className="admin-field" placeholder="Prompt text" required value={promptForm.text} onChange={(e) => setPromptForm({ ...promptForm, text: e.target.value })} />
+                <input className="admin-field" placeholder="Category" value={promptForm.category} onChange={(e) => setPromptForm({ ...promptForm, category: e.target.value })} />
+                <input className="admin-field" placeholder="Difficulty" value={promptForm.difficulty} onChange={(e) => setPromptForm({ ...promptForm, difficulty: e.target.value })} />
+                <input className="admin-field" min={1} type="number" value={promptForm.orderNumber} onChange={(e) => setPromptForm({ ...promptForm, orderNumber: Number(e.target.value) })} />
+                <button className="admin-action admin-action-primary" disabled={busy} type="submit">Add</button>
+              </form>
+
+              <div className="mt-4 rounded-2xl bg-slate-50 p-3">
+                <textarea
+                  className="admin-field min-h-24"
+                  placeholder="CSV: text,category,difficulty,order_number"
+                  value={csvText}
+                  onChange={(event) => setCsvText(event.target.value)}
+                />
+                <input
+                  accept=".csv,text/csv"
+                  className="mt-2 block w-full text-sm font-bold text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-black file:text-blue-700"
+                  type="file"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    void file.text().then(setCsvText);
+                    event.target.value = "";
+                  }}
+                />
+                <button
+                  className="admin-action admin-action-secondary mt-2"
+                  disabled={busy || !csvText.trim()}
+                  onClick={() => void onUploadCsv(selectedPack.id, csvText).then(() => setCsvText(""))}
+                  type="button"
+                >
+                  Upload CSV
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {selectedPack.prompts.map((prompt) => (
+                  <PromptEditor
+                    busy={busy}
+                    key={prompt.id}
+                    prompt={prompt}
+                    onToggle={() => void onTogglePrompt(prompt)}
+                    onDelete={() => void onDeletePrompt(prompt.id)}
+                    onUpdate={(changes) => void onUpdatePrompt(prompt.id, changes)}
+                  />
+                ))}
+                {selectedPack.prompts.length === 0 && (
+                  <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">No prompts in this pack yet.</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PromptEditor({
+  busy,
+  prompt,
+  onToggle,
+  onDelete,
+  onUpdate,
+}: {
+  busy: boolean;
+  prompt: AdminPromptPack["prompts"][number];
+  onToggle: () => void;
+  onDelete: () => void;
+  onUpdate: (changes: { text: string; category: string; difficulty: string; orderNumber: number }) => void;
+}) {
+  const [text, setText] = useState(prompt.text);
+  const [category, setCategory] = useState(prompt.category ?? "");
+  const [difficulty, setDifficulty] = useState(prompt.difficulty ?? "");
+  const [orderNumber, setOrderNumber] = useState(prompt.order_number);
+
+  useEffect(() => {
+    setText(prompt.text);
+    setCategory(prompt.category ?? "");
+    setDifficulty(prompt.difficulty ?? "");
+    setOrderNumber(prompt.order_number);
+  }, [prompt.category, prompt.difficulty, prompt.order_number, prompt.text]);
+
+  const isDirty =
+    text.trim() !== prompt.text ||
+    category.trim() !== (prompt.category ?? "") ||
+    difficulty.trim() !== (prompt.difficulty ?? "") ||
+    orderNumber !== prompt.order_number;
+
+  return (
+    <div className="rounded-xl border border-slate-100 bg-white p-3">
+      <div className="grid gap-2 lg:grid-cols-[70px_1fr_130px_130px_auto_auto_auto] lg:items-center">
+        <input className="admin-field" min={1} type="number" value={orderNumber} onChange={(event) => setOrderNumber(Number(event.target.value))} />
+        <input className="admin-field flex-1" value={text} onChange={(event) => setText(event.target.value)} />
+        <input className="admin-field" placeholder="Category" value={category} onChange={(event) => setCategory(event.target.value)} />
+        <input className="admin-field" placeholder="Difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value)} />
+        <span className={`rounded-full px-3 py-1 text-xs font-black ${prompt.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+          {prompt.is_active ? "Active" : "Inactive"}
+        </span>
+        <button
+          className="compact-btn bg-blue-600 text-white"
+          disabled={busy || !isDirty}
+          onClick={() => onUpdate({ text, category, difficulty, orderNumber })}
+          type="button"
+        >
+          Save
+        </button>
+        <button className="compact-btn bg-slate-700 text-white" disabled={busy} onClick={onToggle} type="button">
+          {prompt.is_active ? "Deactivate" : "Activate"}
+        </button>
+        <button className="compact-btn bg-red-600 text-white" disabled={busy} onClick={onDelete} type="button">
+          Delete
+        </button>
       </div>
     </div>
   );

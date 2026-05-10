@@ -1,9 +1,11 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Award, CheckCircle2, Flame, Mic, Star, Trophy, XCircle } from "lucide-react";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { BrandWaveform } from "./components/Brand";
-import { voicePrompts as starterPrompts } from "./data/prompts";
 import {
+  completePromptPackIfReady,
   fetchDonorProgress,
+  fetchPromptWorkspace,
   fetchPublicStats,
   getCurrentSessionProfile,
   loginWithPassword,
@@ -12,14 +14,13 @@ import {
   uploadAndSaveRecording,
 } from "./lib/supabaseService";
 import type { PublicStats } from "./lib/supabaseService";
-import type { AgeRange, RecordingHistoryItem, RecordingMetadata, RegisteredUser, RegistrationFormData, VoicePrompt } from "./types";
+import type { AgeRange, PromptPack, RecordingHistoryItem, RecordingMetadata, RegisteredUser, RegistrationFormData, VoicePrompt } from "./types";
 import { createRegisteredUser } from "./utils/submissions";
 
-type View = "home" | "about" | "auth" | "dashboard" | "record" | "prompts";
+type View = "home" | "about" | "auth" | "dashboard" | "record";
 type AuthMode = "register" | "login";
 type RecorderState = "idle" | "starting" | "recording" | "recorded";
 
-const PROMPTS_KEY = "rajo-ai-prompts";
 const DIALECT_OPTIONS = [
   "Maxaa tiri",
   "Maay Maay",
@@ -88,7 +89,10 @@ function VoiceCollectionApp() {
   const [donorId, setDonorId] = useState<string | null>(null);
   const [history, setHistory] = useState<RecordingHistoryItem[]>([]);
   const [completedPromptIds, setCompletedPromptIds] = useState<string[]>([]);
-  const [prompts, setPrompts] = useState<VoicePrompt[]>(loadPrompts);
+  const [promptPacks, setPromptPacks] = useState<PromptPack[]>([]);
+  const [prompts, setPrompts] = useState<VoicePrompt[]>([]);
+  const [promptLoading, setPromptLoading] = useState(false);
+  const [unlockNotice, setUnlockNotice] = useState("");
   const [formData, setFormData] = useState(initialFormData);
   const postAuthRef = useRef<View>("dashboard");
   const [loginEmail, setLoginEmail] = useState("");
@@ -122,7 +126,7 @@ function VoiceCollectionApp() {
           setUser(profile.user);
           setDonorId(profile.donorId);
           setLoginEmail(profile.user.email);
-          await loadProgress(profile.donorId);
+          await loadProgress(profile.donorId, profile.user.authUserId);
           if (startingPath === "/record") setView("record");
           else if (startingPath !== "/about") setView("dashboard");
         }
@@ -140,10 +144,6 @@ function VoiceCollectionApp() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(PROMPTS_KEY, JSON.stringify(prompts));
-  }, [prompts]);
-
-  useEffect(() => {
     const onPopState = () => setView(getInitialView());
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -154,10 +154,22 @@ function VoiceCollectionApp() {
     setView(nextView);
   }
 
-  async function loadProgress(id: string) {
-    const progress = await fetchDonorProgress(id);
-    setHistory(progress.history);
-    setCompletedPromptIds(progress.completedSentenceIds);
+  async function loadProgress(id: string, authUserId?: string) {
+    setPromptLoading(true);
+    try {
+      const progress = await fetchDonorProgress(id);
+      setHistory(progress.history);
+      setCompletedPromptIds(progress.completedSentenceIds);
+
+      const promptAuthId = authUserId ?? user?.authUserId;
+      if (promptAuthId) {
+        const workspace = await fetchPromptWorkspace(promptAuthId, progress.completedSentenceIds);
+        setPromptPacks(workspace.packs);
+        setPrompts(workspace.prompts);
+      }
+    } finally {
+      setPromptLoading(false);
+    }
   }
 
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
@@ -173,8 +185,7 @@ function VoiceCollectionApp() {
       setFormData(initialFormData);
       setLoginEmail(profile.user.email);
       setLoginPassword("");
-      setHistory([]);
-      setCompletedPromptIds([]);
+      await loadProgress(profile.donorId, profile.user.authUserId);
       const dest = postAuthRef.current;
       postAuthRef.current = "dashboard";
       navigate(dest, dest === "record" ? "/record" : "/");
@@ -195,7 +206,7 @@ function VoiceCollectionApp() {
       setUser(profile.user);
       setDonorId(profile.donorId);
       setLoginPassword("");
-      await loadProgress(profile.donorId);
+      await loadProgress(profile.donorId, profile.user.authUserId);
       const dest = postAuthRef.current;
       postAuthRef.current = "dashboard";
       navigate(dest, dest === "record" ? "/record" : "/");
@@ -212,6 +223,9 @@ function VoiceCollectionApp() {
     setDonorId(null);
     setHistory([]);
     setCompletedPromptIds([]);
+    setPromptPacks([]);
+    setPrompts([]);
+    setUnlockNotice("");
     navigate("home", "/");
   }
 
@@ -229,9 +243,21 @@ function VoiceCollectionApp() {
     );
 
     setHistory((items) => [recording, ...items]);
-    setCompletedPromptIds((ids) =>
-      ids.includes(prompt.sentenceId) ? ids : [...ids, prompt.sentenceId],
-    );
+    const nextCompleted = completedPromptIds.includes(prompt.sentenceId)
+      ? completedPromptIds
+      : [...completedPromptIds, prompt.sentenceId];
+    setCompletedPromptIds(nextCompleted);
+
+    const unlock = await completePromptPackIfReady(user.authUserId, donorId, prompt.packId);
+    if (unlock?.unlocked) {
+      setUnlockNotice(
+        `New prompts unlocked|You completed your first contribution set. ${unlock.packTitle} is now available.`,
+      );
+    }
+
+    const workspace = await fetchPromptWorkspace(user.authUserId, nextCompleted);
+    setPromptPacks(workspace.packs);
+    setPrompts(workspace.prompts);
   }
 
   function startFromHome(mode: AuthMode, afterAuth: View = "dashboard") {
@@ -283,6 +309,10 @@ function VoiceCollectionApp() {
           />
         ) : view === "dashboard" && user ? (
           <Dashboard
+            completedPromptIds={completedPromptIds}
+            history={history}
+            promptLoading={promptLoading}
+            promptPacks={promptPacks}
             prompts={prompts}
             stats={stats}
             user={user}
@@ -292,13 +322,13 @@ function VoiceCollectionApp() {
           <RecordingPage
             completedPromptIds={completedPromptIds}
             history={history}
+            unlockNotice={unlockNotice}
+            onDismissUnlock={() => setUnlockNotice("")}
             prompts={prompts}
             user={user}
             onBack={() => navigate("dashboard", "/")}
             onSubmitRecording={handleSubmitRecording}
           />
-        ) : view === "prompts" && user ? (
-          <PromptManagement prompts={prompts} onBack={() => navigate("dashboard", "/")} onPromptsChange={setPrompts} />
         ) : (
           <HomePage onAbout={() => navigate("about", "/about")} onStart={() => startFromHome("register", "record")} />
         )}
@@ -920,50 +950,274 @@ function AuthPage({
 }
 
 function Dashboard({
+  completedPromptIds,
+  history,
+  promptLoading,
+  promptPacks,
   prompts,
   stats,
   user,
   onRecord,
 }: {
+  completedPromptIds: string[];
+  history: RecordingHistoryItem[];
+  promptLoading: boolean;
+  promptPacks: PromptPack[];
   prompts: VoicePrompt[];
   stats: { total: number; minutes: number; approved: number; pending: number };
   user: RegisteredUser;
   onRecord: () => void;
 }) {
-  const cards = [
-    ["Total recordings", stats.total.toString()],
-    ["Total minutes", stats.minutes.toFixed(1)],
-    ["Approved recordings", stats.approved.toString()],
-    ["Pending review", stats.pending.toString()],
+  const [publicStats, setPublicStats] = useState<PublicStats | null>(null);
+
+  useEffect(() => {
+    fetchPublicStats().then(setPublicStats).catch(() => {});
+  }, []);
+
+  const streak = useMemo(() => calculateStreak(history), [history]);
+  const todayCount = useMemo(() => countTodayRecordings(history), [history]);
+  const completedCount = completedPromptIds.length;
+  const totalPrompts = promptPacks.reduce((sum, pack) => sum + pack.promptCount, 0);
+  const unlockedCount = promptPacks.length;
+  const currentPack = promptPacks.find((pack) => !pack.completedAt) ?? promptPacks[promptPacks.length - 1];
+  const progressPct = totalPrompts > 0 ? Math.min(Math.round((completedCount / totalPrompts) * 100), 100) : 0;
+  const rank = getContributorRank(stats.total);
+  const DAILY_GOAL = 5;
+
+  const milestones = [
+    { icon: <Mic className="h-3.5 w-3.5" />, label: "First Recording", unlocked: stats.total >= 1 },
+    { icon: <Flame className="h-3.5 w-3.5" />, label: "3-Day Streak", unlocked: streak >= 3 },
+    { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "First Approval", unlocked: stats.approved >= 1 },
+    { icon: <Star className="h-3.5 w-3.5" />, label: "10 Prompts", unlocked: completedCount >= 10 },
+    { icon: <Trophy className="h-3.5 w-3.5" />, label: "25 Prompts", unlocked: completedCount >= 25 },
   ];
 
-  return (
-    <section className="mx-auto max-w-6xl px-5 py-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-black text-slate-950 sm:text-4xl">Welcome, {firstName(user.fullName)}</h1>
-          <p className="mt-2 text-slate-600">{prompts.length} Somali prompts are ready.</p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <button className="btn-primary" onClick={onRecord}>Record New Voice</button>
-        </div>
-      </div>
+  const DATASET_GOAL = 10_000;
+  const communityTotal = publicStats?.total_recordings ?? 0;
+  const communityPct = Math.min(Math.round((communityTotal / DATASET_GOAL) * 100), 100);
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {cards.map(([label, value]) => (
-          <article className="app-card p-5" key={label}>
-            <p className="text-sm font-semibold text-slate-500">{label}</p>
-            <p className="mt-3 text-3xl font-black text-slate-950">{value}</p>
-          </article>
-        ))}
+  return (
+    <div className="min-h-screen bg-[#F7FAFF] pb-16">
+      <div className="mx-auto max-w-4xl space-y-4 px-4 py-6 sm:px-6">
+
+        {/* ── Hero ── */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#467ED3] to-[#2D5DB0] p-7 text-white shadow-lg sm:p-10">
+          {/* Audio waveform texture — decorative */}
+          <div aria-hidden="true" className="pointer-events-none absolute bottom-0 right-0 flex items-end gap-[3px] pb-7 pr-7 opacity-[0.13]">
+            {[14, 26, 42, 20, 54, 32, 64, 24, 48, 36, 70, 22, 52, 38, 60, 18, 44, 30, 56, 16, 46, 28, 62, 20, 40].map((h, i) => (
+              <div key={i} className="w-[3px] rounded-full bg-white" style={{ height: `${h}px` }} />
+            ))}
+          </div>
+
+          <div className="relative z-10 max-w-lg">
+            <p className="text-[11px] font-black uppercase tracking-widest opacity-60">Contributor Dashboard</p>
+            <h1 className="mt-3 text-2xl font-black leading-snug sm:text-[1.75rem]">
+              {firstName(user.fullName)}, your voice matters.
+            </h1>
+            <p className="mt-3 text-sm leading-[1.75] opacity-75">
+              Every recording you submit helps future AI systems understand Somali voices, accents, and dialects.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm font-semibold opacity-70">
+              {streak > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <Flame className="h-3.5 w-3.5" /> {streak}-day streak
+                </span>
+              )}
+              <span className="flex items-center gap-1.5">
+                <Award className="h-3.5 w-3.5" /> {rank}
+              </span>
+            </div>
+            <button
+              className="mt-7 rounded-xl bg-white px-6 py-2.5 text-sm font-black text-[#467ED3] shadow-sm transition hover:bg-blue-50"
+              onClick={onRecord}
+            >
+              Continue Recording →
+            </button>
+          </div>
+        </div>
+
+        {/* ── Progress ── */}
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
+          <div className="flex items-baseline justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Your Progress</p>
+              <p className="mt-1.5 text-xl font-black text-slate-950">
+                {promptLoading ? "Loading prompt set..." : `${completedCount} of ${totalPrompts} prompts completed`}
+              </p>
+              {currentPack && (
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  Current set: {currentPack.title} · {unlockedCount} unlocked
+                </p>
+              )}
+            </div>
+            <p className="shrink-0 text-2xl font-black text-slate-200">{progressPct}%</p>
+          </div>
+          <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-[#467ED3] transition-all duration-700"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <p className="mt-3 text-sm leading-6 text-slate-500">
+            {completedCount === 0
+              ? "Record your first prompt to begin contributing to the Somali voice dataset."
+              : completedCount < totalPrompts
+                ? `${totalPrompts - completedCount} prompts remaining — each one adds to a language dataset that will last for generations.`
+                : "All prompts completed — thank you for your full contribution to the dataset."}
+          </p>
+        </div>
+
+        {/* ── Stats ── */}
+        <div className="space-y-3">
+          {/* Primary — what matters most */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-white p-5 shadow-sm">
+              <p className="text-4xl font-black tracking-tight text-slate-950">{stats.total}</p>
+              <p className="mt-1.5 text-sm text-slate-500">Recordings submitted</p>
+            </div>
+            <div className="rounded-2xl bg-white p-5 shadow-sm">
+              <p className="text-4xl font-black tracking-tight text-slate-950">{stats.minutes.toFixed(1)}</p>
+              <p className="mt-1.5 text-sm text-slate-500">Minutes of voice donated</p>
+            </div>
+          </div>
+          {/* Secondary — supporting context */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
+              <p className="text-lg font-black text-slate-700">{stats.approved}</p>
+              <p className="mt-0.5 text-xs text-slate-400">Recordings approved</p>
+            </div>
+            <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
+              <p className="text-lg font-black text-slate-700">{streak > 0 ? `${streak}-day` : "—"}</p>
+              <p className="mt-0.5 text-xs text-slate-400">Current streak</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Today + Recent activity ── */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Today</p>
+            <p className="mt-2 text-xl font-black text-slate-950">
+              {todayCount === 0
+                ? "No recordings yet."
+                : todayCount >= DAILY_GOAL
+                  ? "Daily goal reached."
+                  : `${todayCount} of ${DAILY_GOAL} recorded.`}
+            </p>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-[#467ED3] transition-all duration-700"
+                style={{ width: `${Math.min((todayCount / DAILY_GOAL) * 100, 100)}%` }}
+              />
+            </div>
+            <p className="mt-2.5 text-xs text-slate-400">
+              {todayCount >= DAILY_GOAL
+                ? "Excellent — you've reached today's goal."
+                : `${DAILY_GOAL - todayCount} more to reach today's goal of ${DAILY_GOAL}.`}
+            </p>
+          </div>
+
+          <div className="rounded-3xl bg-white p-6 shadow-sm">
+            <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Recent Activity</p>
+            {history.length === 0 ? (
+              <p className="mt-3 text-sm text-slate-500">No recordings yet. Start your first prompt.</p>
+            ) : (
+              <ul className="mt-3 space-y-3.5">
+                {history.slice(0, 4).map((item) => {
+                  const activityIcon =
+                    item.status === "approved"
+                      ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                      : item.status === "rejected"
+                        ? <XCircle className="h-4 w-4 text-red-400" />
+                        : <Mic className="h-4 w-4 text-slate-400" />;
+                  const label =
+                    item.status === "approved"
+                      ? "Approved"
+                      : item.status === "rejected"
+                        ? "Needs re-recording"
+                        : "Submitted";
+                  return (
+                    <li key={item.id} className="flex items-start gap-2.5">
+                      <span className="mt-0.5 shrink-0">{activityIcon}</span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-700">{label}</p>
+                        <p className="truncate text-xs text-slate-400">{item.sentenceText}</p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* ── Milestones ── */}
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Milestones</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {milestones.map((m) => (
+              <div
+                key={m.label}
+                className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${
+                  m.unlocked
+                    ? "bg-[#467ED3]/10 text-[#467ED3]"
+                    : "border border-slate-100 text-slate-300"
+                }`}
+              >
+                {m.icon}
+                <span>{m.label}</span>
+                {m.unlocked && <CheckCircle2 className="h-3.5 w-3.5 opacity-60" />}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── The bigger picture ── */}
+        <div className="rounded-3xl bg-white p-6 shadow-sm">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">The Bigger Picture</p>
+          <div className="mt-3 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="max-w-sm">
+              <p className="text-lg font-black leading-snug text-slate-950">
+                You are contributing to one of the first large-scale Somali voice datasets.
+              </p>
+              <p className="mt-2.5 text-sm leading-6 text-slate-500">
+                Together, contributors from around the world are building the foundation for AI that truly understands Somali — its voices, accents, and dialects.
+              </p>
+            </div>
+            <div className="shrink-0 sm:text-right">
+              <p className="text-4xl font-black tabular-nums text-[#467ED3] sm:text-5xl">
+                {communityTotal.toLocaleString()}
+              </p>
+              <p className="mt-1 text-[11px] font-black uppercase tracking-wider text-slate-400">
+                community recordings
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full bg-[#467ED3] transition-all duration-700"
+              style={{ width: `${communityPct}%` }}
+            />
+          </div>
+          <div className="mt-2 flex justify-between text-[11px] text-slate-400">
+            <span>{communityPct}% toward goal</span>
+            <span>Goal: {DATASET_GOAL.toLocaleString()} recordings</span>
+          </div>
+          <p className="mt-5 border-t border-slate-50 pt-4 text-xs italic text-slate-400">
+            "Waxaan wada dhisaynaa mustaqbalka codka Soomaalida." — Together we are building the future of the Somali voice.
+          </p>
+        </div>
+
       </div>
-    </section>
+    </div>
   );
 }
 
 function RecordingPage({
   completedPromptIds,
   history,
+  unlockNotice,
+  onDismissUnlock,
   prompts,
   user,
   onBack,
@@ -971,6 +1225,8 @@ function RecordingPage({
 }: {
   completedPromptIds: string[];
   history: RecordingHistoryItem[];
+  unlockNotice: string;
+  onDismissUnlock: () => void;
   prompts: VoicePrompt[];
   user: RegisteredUser;
   onBack: () => void;
@@ -997,6 +1253,7 @@ function RecordingPage({
 
   const prompt = prompts[promptIndex] ?? prompts[0];
   const completed = prompt ? completedPromptIds.includes(prompt.sentenceId) : false;
+  const [unlockTitle, unlockBody] = unlockNotice.split("|");
 
   useEffect(() => {
     return () => {
@@ -1007,6 +1264,10 @@ function RecordingPage({
   useEffect(() => {
     return () => stopActiveStream();
   }, []);
+
+  useEffect(() => {
+    setPromptIndex(Math.max(prompts.findIndex((item) => !completedPromptIds.includes(item.sentenceId)), 0));
+  }, [completedPromptIds, prompts]);
 
   async function startRecording() {
     if (recorderState !== "idle") return;
@@ -1115,7 +1376,6 @@ function RecordingPage({
         consent: true,
       });
       resetRecording();
-      goToNext();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not submit recording.");
     } finally {
@@ -1149,8 +1409,22 @@ function RecordingPage({
         </div>
 
         <div className="p-5 sm:p-8">
+          {unlockNotice && (
+            <div className="mb-6 rounded-3xl border border-blue-100 bg-blue-50 p-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-lg font-black text-[#467ED3]">{unlockTitle}</p>
+                  <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">{unlockBody}</p>
+                </div>
+                <button className="btn-secondary min-h-10 rounded-xl px-4 py-2 text-xs" onClick={onDismissUnlock}>
+                  Continue
+                </button>
+              </div>
+            </div>
+          )}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
             <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Read this Somali prompt</p>
+            <p className="mt-2 text-xs font-black uppercase tracking-widest text-[#467ED3]">{prompt.packTitle}</p>
             <h1 className="mt-5 text-3xl font-black leading-tight text-slate-950 sm:text-5xl">{prompt.sentenceText}</h1>
             {completed && (
               <p className="mt-5 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
@@ -1220,55 +1494,6 @@ function RecordingPage({
               {history.length === 0 && <p className="text-sm text-slate-500">No recordings yet.</p>}
             </div>
           </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PromptManagement({
-  prompts,
-  onBack,
-  onPromptsChange,
-}: {
-  prompts: VoicePrompt[];
-  onBack: () => void;
-  onPromptsChange: (prompts: VoicePrompt[]) => void;
-}) {
-  const [text, setText] = useState("");
-
-  function addPrompt(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    onPromptsChange([
-      ...prompts,
-      {
-        sentenceId: `custom-${Date.now()}`,
-        sentenceText: trimmed,
-      },
-    ]);
-    setText("");
-  }
-
-  return (
-    <section className="mx-auto max-w-4xl px-5 py-8">
-      <button className="btn-ghost mb-5" onClick={onBack}>Back to Dashboard</button>
-      <div className="app-card p-5 sm:p-7">
-        <h1 className="text-3xl font-black text-slate-950">Prompt Management</h1>
-        <p className="mt-2 text-slate-600">Add Somali words or sentences. They will appear one by one on the recording page.</p>
-        <form className="mt-6 flex flex-col gap-3 sm:flex-row" onSubmit={addPrompt}>
-          <input className="field flex-1" placeholder="Type a Somali word or sentence" value={text} onChange={(event) => setText(event.target.value)} />
-          <button className="btn-primary" type="submit">Add Prompt</button>
-        </form>
-        <div className="mt-6 space-y-3">
-          {prompts.map((prompt, index) => (
-            <div className="flex gap-3 rounded-2xl border border-slate-200 p-4" key={prompt.sentenceId}>
-              <span className="font-black text-blue-700">{index + 1}</span>
-              <p className="font-semibold text-slate-700">{prompt.sentenceText}</p>
-            </div>
-          ))}
         </div>
       </div>
     </section>
@@ -1398,15 +1623,51 @@ function getInitialView(): View {
   return "home";
 }
 
-function loadPrompts(): VoicePrompt[] {
-  try {
-    const saved = localStorage.getItem(PROMPTS_KEY);
-    if (!saved) return starterPrompts;
-    const parsed = JSON.parse(saved) as VoicePrompt[];
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : starterPrompts;
-  } catch {
-    return starterPrompts;
+function calculateStreak(history: RecordingHistoryItem[]): number {
+  if (history.length === 0) return 0;
+
+  const makeKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  const dateKeys = new Set(history.map((item) => makeKey(new Date(item.createdAt))));
+
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  if (!dateKeys.has(makeKey(today)) && !dateKeys.has(makeKey(yesterday))) return 0;
+
+  const start = dateKeys.has(makeKey(today)) ? today : yesterday;
+  let streak = 0;
+
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() - i);
+    if (dateKeys.has(makeKey(d))) {
+      streak++;
+    } else {
+      break;
+    }
   }
+
+  return streak;
 }
+
+function countTodayRecordings(history: RecordingHistoryItem[]): number {
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
+  return history.filter((item) => {
+    const d = new Date(item.createdAt);
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}` === todayKey;
+  }).length;
+}
+
+function getContributorRank(total: number): string {
+  if (total >= 51) return "Voice Leader";
+  if (total >= 31) return "Voice Champion";
+  if (total >= 16) return "Voice Pioneer";
+  if (total >= 6) return "Voice Builder";
+  if (total >= 1) return "Voice Starter";
+  return "New Voice";
+}
+
 
 export default App;

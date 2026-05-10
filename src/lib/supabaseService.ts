@@ -1,5 +1,12 @@
 import { getSupabase } from "./supabase";
-import type { AgeRange, RecordingHistoryItem, RecordingMetadata, RegisteredUser } from "../types";
+import type {
+  AgeRange,
+  PromptPack,
+  RecordingHistoryItem,
+  RecordingMetadata,
+  RegisteredUser,
+  VoicePrompt,
+} from "../types";
 
 type DonorRow = {
   id: string;
@@ -26,6 +33,32 @@ type RecordingRow = {
   created_at: string;
 };
 
+type PromptPackRow = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  language: string;
+  unlock_order: number;
+  required_previous_pack_id: string | null;
+  is_active: boolean;
+  completed_at?: string | null;
+  prompts?: { count: number }[] | null;
+};
+
+type PromptRow = {
+  id: string;
+  pack_id: string;
+  text: string;
+  category: string | null;
+  difficulty: string | null;
+  order_number: number;
+  prompt_packs?: {
+    title: string;
+    unlock_order: number;
+  } | null;
+};
+
 export type AuthProfile = {
   donorId: string;
   user: RegisteredUser;
@@ -41,6 +74,7 @@ const mapDonorRow = (row: DonorRow): AuthProfile => ({
   donorId: row.id,
   user: {
     userId: row.id,
+    authUserId: row.auth_user_id ?? "",
     fullName: row.full_name,
     email: row.email,
     ageRange: row.age_range ?? legacyAgeToRange(row.age),
@@ -153,6 +187,7 @@ export async function registerAndCreateProfile(
           donorId,
           user: {
             ...user,
+            authUserId: authenticatedUser.id,
             userId: donorId,
             voiceProfileId: user.voiceProfileId || `voice-profile-${donorId}`,
           },
@@ -169,6 +204,7 @@ export async function registerAndCreateProfile(
       donorId,
       user: {
         ...user,
+        authUserId,
         userId: donorId,
         voiceProfileId: user.voiceProfileId || `voice-profile-${donorId}`,
       },
@@ -215,6 +251,215 @@ export async function fetchDonorProgress(donorId: string): Promise<ProgressSnaps
     totalRecordings: history.length,
     completedSentenceIds: Array.from(new Set(history.map((item) => item.sentenceId))),
     history,
+  };
+}
+
+export type PromptWorkspace = {
+  packs: PromptPack[];
+  prompts: VoicePrompt[];
+};
+
+const mapPromptPackRow = (row: PromptPackRow): PromptPack => ({
+  id: row.id,
+  slug: row.slug,
+  title: row.title,
+  description: row.description,
+  language: row.language,
+  unlockOrder: row.unlock_order,
+  requiredPreviousPackId: row.required_previous_pack_id,
+  isActive: row.is_active,
+  completedAt: row.completed_at ?? null,
+  promptCount: row.prompts?.[0]?.count ?? 0,
+});
+
+const mapPromptRow = (row: PromptRow): VoicePrompt => ({
+  sentenceId: row.id,
+  sentenceText: row.text,
+  packId: row.pack_id,
+  packTitle: row.prompt_packs?.title ?? "Somali prompts",
+  orderNumber: row.order_number,
+  category: row.category,
+  difficulty: row.difficulty,
+});
+
+export async function fetchPromptWorkspace(
+  authUserId: string,
+  completedPromptIds: string[],
+): Promise<PromptWorkspace> {
+  const sb = getSupabase();
+  await ensureInitialPromptPackUnlocked(authUserId);
+
+  const { data: progressRows, error: progressError } = await sb
+    .from("user_prompt_progress")
+    .select(`
+      completed_at,
+      prompt_packs (
+        id,
+        slug,
+        title,
+        description,
+        language,
+        unlock_order,
+        required_previous_pack_id,
+        is_active,
+        prompts ( count )
+      )
+    `)
+    .eq("user_id", authUserId)
+    .order("created_at", { ascending: true });
+
+  if (progressError) throw new Error(`Could not load prompt packs: ${progressError.message}`);
+
+  const packs = (progressRows ?? [])
+    .map((row) => {
+      const pack = Array.isArray(row.prompt_packs) ? row.prompt_packs[0] : row.prompt_packs;
+      return pack ? mapPromptPackRow({ ...pack, completed_at: row.completed_at } as PromptPackRow) : null;
+    })
+    .filter((pack): pack is PromptPack => Boolean(pack?.isActive))
+    .sort((a, b) => a.unlockOrder - b.unlockOrder);
+
+  if (packs.length === 0) return { packs: [], prompts: [] };
+
+  const packIds = packs.map((pack) => pack.id);
+  const { data: promptRows, error: promptError } = await sb
+    .from("prompts")
+    .select("id, pack_id, text, category, difficulty, order_number, prompt_packs ( title, unlock_order )")
+    .in("pack_id", packIds)
+    .eq("is_active", true)
+    .order("order_number", { ascending: true });
+
+  if (promptError) throw new Error(`Could not load prompts: ${promptError.message}`);
+
+  const completedSet = new Set(completedPromptIds);
+  const promptList = ((promptRows ?? []) as unknown as PromptRow[]).map(mapPromptRow);
+  const promptsByPack = new Map<string, VoicePrompt[]>();
+  for (const prompt of promptList) {
+    promptsByPack.set(prompt.packId, [...(promptsByPack.get(prompt.packId) ?? []), prompt]);
+  }
+
+  const activePrompts = packs.flatMap((pack) => {
+    const packPrompts = promptsByPack.get(pack.id) ?? [];
+    const packComplete = packPrompts.length > 0 && packPrompts.every((prompt) => completedSet.has(prompt.sentenceId));
+    return packComplete ? packPrompts : packPrompts.filter((prompt) => !completedSet.has(prompt.sentenceId));
+  });
+
+  return { packs, prompts: activePrompts };
+}
+
+async function ensureInitialPromptPackUnlocked(authUserId: string): Promise<void> {
+  if (!authUserId) return;
+
+  const sb = getSupabase();
+  const { data: existing, error: existingError } = await sb
+    .from("user_prompt_progress")
+    .select("id")
+    .eq("user_id", authUserId)
+    .limit(1);
+
+  if (existingError) throw new Error(`Could not load prompt progress: ${existingError.message}`);
+  if ((existing ?? []).length > 0) return;
+
+  const { data: firstPack, error: packError } = await sb
+    .from("prompt_packs")
+    .select("id")
+    .eq("is_active", true)
+    .order("unlock_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (packError) throw new Error(`Could not load starter prompts: ${packError.message}`);
+  if (!firstPack?.id) return;
+
+  const { error: insertError } = await sb.from("user_prompt_progress").insert({
+    user_id: authUserId,
+    pack_id: firstPack.id,
+  });
+
+  if (insertError && insertError.code !== "23505") {
+    throw new Error(`Could not unlock starter prompts: ${insertError.message}`);
+  }
+}
+
+export type PromptUnlockResult = {
+  unlocked: boolean;
+  packTitle: string;
+  completedPackTitle: string;
+};
+
+export async function completePromptPackIfReady(
+  authUserId: string,
+  donorId: string,
+  packId: string,
+): Promise<PromptUnlockResult | null> {
+  const sb = getSupabase();
+
+  const { data: pack, error: packError } = await sb
+    .from("prompt_packs")
+    .select("id, title, unlock_order")
+    .eq("id", packId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (packError) throw new Error(`Could not check prompt pack: ${packError.message}`);
+  if (!pack) return null;
+
+  const { data: packPrompts, error: promptsError } = await sb
+    .from("prompts")
+    .select("id")
+    .eq("pack_id", packId)
+    .eq("is_active", true);
+
+  if (promptsError) throw new Error(`Could not check prompt completion: ${promptsError.message}`);
+
+  const promptIds = (packPrompts ?? []).map((prompt) => prompt.id as string);
+  if (promptIds.length === 0) return null;
+
+  const { data: completedRows, error: recordingsError } = await sb
+    .from("voice_recordings")
+    .select("sentence_id")
+    .eq("donor_id", donorId)
+    .in("sentence_id", promptIds);
+
+  if (recordingsError) throw new Error(`Could not check recordings: ${recordingsError.message}`);
+
+  const completedIds = new Set((completedRows ?? []).map((row) => row.sentence_id as string));
+  if (!promptIds.every((id) => completedIds.has(id))) return null;
+
+  const completedAt = new Date().toISOString();
+  const { error: updateError } = await sb
+    .from("user_prompt_progress")
+    .update({ completed_at: completedAt })
+    .eq("user_id", authUserId)
+    .eq("pack_id", packId)
+    .is("completed_at", null);
+
+  if (updateError) throw new Error(`Could not mark prompt pack complete: ${updateError.message}`);
+
+  const { data: nextPack, error: nextError } = await sb
+    .from("prompt_packs")
+    .select("id, title")
+    .eq("is_active", true)
+    .gt("unlock_order", pack.unlock_order)
+    .order("unlock_order", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (nextError) throw new Error(`Could not check next prompt pack: ${nextError.message}`);
+  if (!nextPack?.id) return null;
+
+  const { error: unlockError } = await sb.from("user_prompt_progress").insert({
+    user_id: authUserId,
+    pack_id: nextPack.id,
+  });
+
+  if (unlockError && unlockError.code !== "23505") {
+    throw new Error(`Could not unlock new prompts: ${unlockError.message}`);
+  }
+
+  return {
+    unlocked: true,
+    packTitle: nextPack.title as string,
+    completedPackTitle: pack.title as string,
   };
 }
 

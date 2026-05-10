@@ -23,6 +23,7 @@ export type RegistrationFormData = {
 
 export type RegisteredUser = {
   userId: string;
+  authUserId: string;
   fullName: string;
   email: string;
   ageRange: AgeRange;
@@ -37,6 +38,24 @@ export type RegisteredUser = {
 export type VoicePrompt = {
   sentenceId: string;
   sentenceText: string;
+  packId: string;
+  packTitle: string;
+  orderNumber: number;
+  category: string | null;
+  difficulty: string | null;
+};
+
+export type PromptPack = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  language: string;
+  unlockOrder: number;
+  requiredPreviousPackId: string | null;
+  isActive: boolean;
+  completedAt: string | null;
+  promptCount: number;
 };
 
 export type RecordingMetadata = {

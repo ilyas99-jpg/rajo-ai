@@ -22,6 +22,7 @@ export const createRegisteredUser = (
 
   return {
     userId,
+    authUserId: "",
     fullName: formData.fullName.trim(),
     email: formData.email.trim().toLowerCase(),
     ageRange: formData.ageRange,

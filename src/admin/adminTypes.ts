@@ -52,3 +52,27 @@ export type AdminDashboardData = {
   donors: AdminDonor[];
   recordings: AdminRecording[];
 };
+
+export type AdminPrompt = {
+  id: string;
+  pack_id: string;
+  text: string;
+  category: string | null;
+  difficulty: string | null;
+  order_number: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type AdminPromptPack = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string | null;
+  language: string;
+  unlock_order: number;
+  required_previous_pack_id: string | null;
+  is_active: boolean;
+  created_at: string;
+  prompts: AdminPrompt[];
+};
