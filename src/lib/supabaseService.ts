@@ -270,6 +270,7 @@ const mapPromptPackRow = (row: PromptPackRow): PromptPack => ({
   isActive: row.is_active,
   completedAt: row.completed_at ?? null,
   promptCount: row.prompts?.[0]?.count ?? 0,
+  completedPromptCount: 0,
 });
 
 const mapPromptRow = (row: PromptRow): VoicePrompt => ({
@@ -337,13 +338,28 @@ export async function fetchPromptWorkspace(
     promptsByPack.set(prompt.packId, [...(promptsByPack.get(prompt.packId) ?? []), prompt]);
   }
 
-  const activePrompts = packs.flatMap((pack) => {
+  const packsWithCompletion = packs.map((pack) => {
     const packPrompts = promptsByPack.get(pack.id) ?? [];
-    const packComplete = packPrompts.length > 0 && packPrompts.every((prompt) => completedSet.has(prompt.sentenceId));
-    return packComplete ? packPrompts : packPrompts.filter((prompt) => !completedSet.has(prompt.sentenceId));
+    const completedPromptCount = packPrompts.filter((prompt) => completedSet.has(prompt.sentenceId)).length;
+    return {
+      ...pack,
+      promptCount: packPrompts.length,
+      completedPromptCount: Math.min(completedPromptCount, packPrompts.length),
+    };
   });
 
-  return { packs, prompts: activePrompts };
+  const currentPack =
+    packsWithCompletion.find((pack) => !pack.completedAt) ??
+    packsWithCompletion[packsWithCompletion.length - 1];
+  const currentPackPrompts = currentPack ? promptsByPack.get(currentPack.id) ?? [] : [];
+  const currentPackComplete =
+    currentPackPrompts.length > 0 &&
+    currentPackPrompts.every((prompt) => completedSet.has(prompt.sentenceId));
+  const activePrompts = currentPackComplete
+    ? currentPackPrompts
+    : currentPackPrompts.filter((prompt) => !completedSet.has(prompt.sentenceId));
+
+  return { packs: packsWithCompletion, prompts: activePrompts };
 }
 
 async function ensureInitialPromptPackUnlocked(authUserId: string): Promise<void> {

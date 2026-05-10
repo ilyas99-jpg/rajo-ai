@@ -396,7 +396,7 @@ function AboutPage({ onStart }: { onStart: () => void }) {
   return (
     <div className="bg-white">
 
-      {/* ── SECTION 1: HERO ── */}
+      {/* SECTION 1: HERO */}
       <section className="border-b border-slate-100 bg-white px-5 py-20 sm:py-28">
         <div className="mx-auto max-w-3xl text-center">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">About Rajo AI</p>
@@ -409,7 +409,7 @@ function AboutPage({ onStart }: { onStart: () => void }) {
         </div>
       </section>
 
-      {/* ── SECTION 2: SOMALI EXPLANATION ── */}
+      {/* SECTION 2: SOMALI EXPLANATION */}
       <section className="bg-[#F7FAFF] px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-2xl space-y-7">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Af-Soomaali</p>
@@ -428,7 +428,7 @@ function AboutPage({ onStart }: { onStart: () => void }) {
         </div>
       </section>
 
-      {/* ── SECTION 3: OUR MISSION ── */}
+      {/* SECTION 3: OUR MISSION */}
       <section className="bg-white px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-2xl">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Our mission</p>
@@ -441,7 +441,7 @@ function AboutPage({ onStart }: { onStart: () => void }) {
         </div>
       </section>
 
-      {/* ── SECTION 4: WHY IT MATTERS ── */}
+      {/* SECTION 4: WHY IT MATTERS */}
       <section className="bg-[#F7FAFF] px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-5xl">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Why it matters</p>
@@ -479,7 +479,7 @@ function AboutPage({ onStart }: { onStart: () => void }) {
         </div>
       </section>
 
-      {/* ── SECTION 5: PRIVACY & ETHICS ── */}
+      {/* SECTION 5: PRIVACY & ETHICS */}
       <section className="bg-white px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-5xl">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Privacy & ethics</p>
@@ -522,7 +522,7 @@ function AboutPage({ onStart }: { onStart: () => void }) {
         </div>
       </section>
 
-      {/* ── SECTION 6: CONTACT ── */}
+      {/* SECTION 6: CONTACT */}
       <section className="border-t border-slate-100 bg-white px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-2xl text-center">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Get in touch</p>
@@ -976,10 +976,11 @@ function Dashboard({
 
   const streak = useMemo(() => calculateStreak(history), [history]);
   const todayCount = useMemo(() => countTodayRecordings(history), [history]);
-  const completedCount = completedPromptIds.length;
-  const totalPrompts = promptPacks.reduce((sum, pack) => sum + pack.promptCount, 0);
-  const unlockedCount = promptPacks.length;
   const currentPack = promptPacks.find((pack) => !pack.completedAt) ?? promptPacks[promptPacks.length - 1];
+  const totalPrompts = currentPack?.promptCount ?? 0;
+  const completedCount = Math.min(currentPack?.completedPromptCount ?? 0, totalPrompts);
+  const remainingPrompts = Math.max(totalPrompts - completedCount, 0);
+  const unlockedCount = promptPacks.length;
   const progressPct = totalPrompts > 0 ? Math.min(Math.round((completedCount / totalPrompts) * 100), 100) : 0;
   const rank = getContributorRank(stats.total);
   const DAILY_GOAL = 5;
@@ -988,8 +989,8 @@ function Dashboard({
     { icon: <Mic className="h-3.5 w-3.5" />, label: "First Recording", unlocked: stats.total >= 1 },
     { icon: <Flame className="h-3.5 w-3.5" />, label: "3-Day Streak", unlocked: streak >= 3 },
     { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "First Approval", unlocked: stats.approved >= 1 },
-    { icon: <Star className="h-3.5 w-3.5" />, label: "10 Prompts", unlocked: completedCount >= 10 },
-    { icon: <Trophy className="h-3.5 w-3.5" />, label: "25 Prompts", unlocked: completedCount >= 25 },
+    { icon: <Star className="h-3.5 w-3.5" />, label: "10 Recordings", unlocked: stats.total >= 10 },
+    { icon: <Trophy className="h-3.5 w-3.5" />, label: "25 Recordings", unlocked: stats.total >= 25 },
   ];
 
   const DATASET_GOAL = 10_000;
@@ -1000,7 +1001,7 @@ function Dashboard({
     <div className="min-h-screen bg-[#F7FAFF] pb-16">
       <div className="mx-auto max-w-4xl space-y-4 px-4 py-6 sm:px-6">
 
-        {/* ── Hero ── */}
+        {/* Hero */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#467ED3] to-[#2D5DB0] p-7 text-white shadow-lg sm:p-10">
           {/* Audio waveform texture — decorative */}
           <div aria-hidden="true" className="pointer-events-none absolute bottom-0 right-0 flex items-end gap-[3px] pb-7 pr-7 opacity-[0.13]">
@@ -1036,11 +1037,11 @@ function Dashboard({
           </div>
         </div>
 
-        {/* ── Progress ── */}
+        {/* Progress */}
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           <div className="flex items-baseline justify-between gap-4">
             <div>
-              <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Your Progress</p>
+              <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Current Pack Progress</p>
               <p className="mt-1.5 text-xl font-black text-slate-950">
                 {promptLoading ? "Loading prompt set..." : `${completedCount} of ${totalPrompts} prompts completed`}
               </p>
@@ -1062,13 +1063,14 @@ function Dashboard({
             {completedCount === 0
               ? "Record your first prompt to begin contributing to the Somali voice dataset."
               : completedCount < totalPrompts
-                ? `${totalPrompts - completedCount} prompts remaining — each one adds to a language dataset that will last for generations.`
-                : "All prompts completed — thank you for your full contribution to the dataset."}
+                ? `${remainingPrompts} prompts remaining in this pack — each one adds to a language dataset that will last for generations.`
+                : "This prompt pack is complete. New prompts will appear when the next set unlocks."}
           </p>
         </div>
 
-        {/* ── Stats ── */}
+        {/* Total Contributions */}
         <div className="space-y-3">
+          <p className="px-1 text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Total Contributions</p>
           {/* Primary — what matters most */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-white p-5 shadow-sm">
@@ -1093,7 +1095,7 @@ function Dashboard({
           </div>
         </div>
 
-        {/* ── Today + Recent activity ── */}
+        {/* Today + Recent activity */}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-3xl bg-white p-6 shadow-sm">
             <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Today</p>
@@ -1151,7 +1153,7 @@ function Dashboard({
           </div>
         </div>
 
-        {/* ── Milestones ── */}
+        {/* Milestones */}
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Milestones</p>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -1172,7 +1174,7 @@ function Dashboard({
           </div>
         </div>
 
-        {/* ── The bigger picture ── */}
+        {/* The bigger picture */}
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">The Bigger Picture</p>
           <div className="mt-3 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
@@ -1671,3 +1673,5 @@ function getContributorRank(total: number): string {
 
 
 export default App;
+
+

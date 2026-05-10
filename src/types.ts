@@ -56,6 +56,7 @@ export type PromptPack = {
   isActive: boolean;
   completedAt: string | null;
   promptCount: number;
+  completedPromptCount: number;
 };
 
 export type RecordingMetadata = {
