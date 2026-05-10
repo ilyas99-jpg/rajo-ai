@@ -16,11 +16,15 @@ export const createRegisteredUser = (
     throw new Error("Please select your Somali dialect before continuing.");
   }
 
+  if (!formData.ageRange) {
+    throw new Error("Please select your age range before continuing.");
+  }
+
   return {
     userId,
     fullName: formData.fullName.trim(),
     email: formData.email.trim().toLowerCase(),
-    age: Number(formData.age),
+    ageRange: formData.ageRange,
     gender: formData.gender,
     country: formData.country.trim(),
     city: formData.city.trim(),
@@ -39,7 +43,7 @@ export const createVoiceSubmission = (
   userId: user.userId,
   fullName: user.fullName,
   email: user.email,
-  age: user.age,
+  ageRange: user.ageRange,
   gender: user.gender,
   country: user.country,
   city: user.city,

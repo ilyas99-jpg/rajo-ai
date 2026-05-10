@@ -1,10 +1,18 @@
 export type Gender = "Female" | "Male" | "Prefer not to say" | "Other";
+export type AgeRange =
+  | "Under 18"
+  | "18–25"
+  | "26–35"
+  | "36–45"
+  | "46–60"
+  | "60+"
+  | "Prefer not to say";
 
 export type RegistrationFormData = {
   fullName: string;
   email: string;
   password: string;
-  age: string;
+  ageRange: AgeRange | "";
   gender: Gender | "";
   country: string;
   city: string;
@@ -17,7 +25,7 @@ export type RegisteredUser = {
   userId: string;
   fullName: string;
   email: string;
-  age: number;
+  ageRange: AgeRange;
   gender: Gender | "";
   country: string;
   city: string;
@@ -55,7 +63,7 @@ export type VoiceSubmission = {
   userId: string;
   fullName: string;
   email: string;
-  age: number;
+  ageRange: AgeRange;
   gender: Gender | "";
   country: string;
   city: string;

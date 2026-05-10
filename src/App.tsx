@@ -12,7 +12,7 @@ import {
   uploadAndSaveRecording,
 } from "./lib/supabaseService";
 import type { PublicStats } from "./lib/supabaseService";
-import type { RecordingHistoryItem, RecordingMetadata, RegisteredUser, RegistrationFormData, VoicePrompt } from "./types";
+import type { AgeRange, RecordingHistoryItem, RecordingMetadata, RegisteredUser, RegistrationFormData, VoicePrompt } from "./types";
 import { createRegisteredUser } from "./utils/submissions";
 
 type View = "home" | "about" | "auth" | "dashboard" | "record" | "prompts";
@@ -27,6 +27,16 @@ const DIALECT_OPTIONS = [
   "Northern Somali",
   "Reer Xamar / Benadiri",
   "Other",
+];
+
+const AGE_RANGE_OPTIONS: AgeRange[] = [
+  "Under 18",
+  "18–25",
+  "26–35",
+  "36–45",
+  "46–60",
+  "60+",
+  "Prefer not to say",
 ];
 
 const PRIORITY_COUNTRIES = ["Somalia", "Kenya", "Ethiopia", "Djibouti", "Uganda", "USA", "UK", "Canada"];
@@ -56,7 +66,7 @@ const initialFormData: RegistrationFormData = {
   fullName: "",
   email: "",
   password: "",
-  age: "18",
+  ageRange: "",
   gender: "Prefer not to say",
   country: "",
   city: "",
@@ -816,7 +826,14 @@ function AuthPage({
             <TextField label="Email" required type="email" value={formData.email} onChange={(value) => onFormChange({ ...formData, email: value })} />
             <TextField label="Password" required type="password" value={formData.password} onChange={(value) => onFormChange({ ...formData, password: value })} />
             <div className="grid gap-4 sm:grid-cols-2">
-              <TextField label="Age" required type="number" value={formData.age} onChange={(value) => onFormChange({ ...formData, age: value })} />
+              <SelectField
+                label="Age range"
+                placeholder="Select your age range"
+                required
+                value={formData.ageRange}
+                onChange={(value) => onFormChange({ ...formData, ageRange: value as RegistrationFormData["ageRange"] })}
+                options={AGE_RANGE_OPTIONS}
+              />
               <label className="block">
                 <span className="field-label">Gender</span>
                 <select className="field" value={formData.gender} onChange={(event) => onFormChange({ ...formData, gender: event.target.value as RegistrationFormData["gender"] })}>
@@ -1089,7 +1106,7 @@ function RecordingPage({
 
     try {
       await onSubmitRecording(prompt, audioBlob, {
-        ageRange: ageToRange(user.age),
+        ageRange: user.ageRange,
         country: user.country,
         city: user.city,
         deviceType: metadata.deviceType,
@@ -1285,17 +1302,22 @@ function SelectField({
   label,
   onChange,
   options,
+  placeholder,
+  required = true,
   value,
 }: {
   label: string;
   onChange: (value: string) => void;
   options: string[];
+  placeholder?: string;
+  required?: boolean;
   value: string;
 }) {
   return (
     <label className="block">
       <span className="field-label">{label}</span>
-      <select className="field" required value={value} onChange={(event) => onChange(event.target.value)}>
+      <select className="field" required={required} value={value} onChange={(event) => onChange(event.target.value)}>
+        {placeholder && <option value="">{placeholder}</option>}
         {options.map((option) => (
           <option key={option} value={option}>{option}</option>
         ))}
@@ -1333,13 +1355,6 @@ function CenteredMessage({ text }: { text: string }) {
 
 function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;
-}
-
-function ageToRange(age: number): string {
-  if (age >= 45) return "45+";
-  if (age >= 35) return "35-44";
-  if (age >= 25) return "25-34";
-  return "18-24";
 }
 
 function getSupportedAudioMimeType(): string | undefined {

@@ -1,12 +1,13 @@
 import { getSupabase } from "./supabase";
-import type { RecordingHistoryItem, RecordingMetadata, RegisteredUser } from "../types";
+import type { AgeRange, RecordingHistoryItem, RecordingMetadata, RegisteredUser } from "../types";
 
 type DonorRow = {
   id: string;
   auth_user_id?: string | null;
   full_name: string;
   email: string;
-  age: number;
+  age: number | null;
+  age_range: AgeRange | null;
   gender: RegisteredUser["gender"];
   country: string;
   city: string;
@@ -42,7 +43,7 @@ const mapDonorRow = (row: DonorRow): AuthProfile => ({
     userId: row.id,
     fullName: row.full_name,
     email: row.email,
-    age: row.age,
+    ageRange: row.age_range ?? legacyAgeToRange(row.age),
     gender: row.gender,
     country: row.country,
     city: row.city,
@@ -63,7 +64,7 @@ const mapRecordingRow = (row: RecordingRow): RecordingHistoryItem => ({
 });
 
 const donorProfileSelect =
-  "id, auth_user_id, full_name, email, age, gender, country, city, dialect, consent, voice_profile_id";
+  "id, auth_user_id, full_name, email, age, age_range, gender, country, city, dialect, consent, voice_profile_id";
 
 async function getProfileByAuthUserId(authUserId: string): Promise<AuthProfile | null> {
   const { data, error } = await getSupabase()
@@ -233,7 +234,7 @@ export async function insertDonor(user: RegisteredUser, authUserId: string): Pro
       auth_user_id: authUserId,
       full_name: user.fullName,
       email: user.email,
-      age: user.age,
+      age_range: user.ageRange,
       gender: user.gender,
       country: user.country,
       city: user.city,
@@ -246,6 +247,16 @@ export async function insertDonor(user: RegisteredUser, authUserId: string): Pro
 
   if (error) throw new Error(`Registration failed: ${error.message}`);
   return (data as { id: string }).id;
+}
+
+function legacyAgeToRange(age: number | null): AgeRange {
+  if (age === null || Number.isNaN(age)) return "Prefer not to say";
+  if (age < 18) return "Under 18";
+  if (age <= 25) return "18–25";
+  if (age <= 35) return "26–35";
+  if (age <= 45) return "36–45";
+  if (age <= 60) return "46–60";
+  return "60+";
 }
 
 /**

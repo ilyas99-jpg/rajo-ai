@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS voice_donors (
   auth_user_id     UUID        REFERENCES auth.users(id) ON DELETE CASCADE,
   full_name        TEXT        NOT NULL,
   email            TEXT        NOT NULL,
-  age              INTEGER     NOT NULL,
+  age              INTEGER,
+  age_range        TEXT        NOT NULL DEFAULT 'Prefer not to say',
   gender           TEXT        NOT NULL,
   country          TEXT        NOT NULL DEFAULT '',
   city             TEXT        NOT NULL DEFAULT '',
@@ -22,7 +23,11 @@ CREATE TABLE IF NOT EXISTS voice_donors (
 
 ALTER TABLE voice_donors
   ADD COLUMN IF NOT EXISTS auth_user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS age_range TEXT NOT NULL DEFAULT 'Prefer not to say',
   ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+
+ALTER TABLE voice_donors
+  ALTER COLUMN age DROP NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS voice_donors_auth_user_id_key
   ON voice_donors(auth_user_id)

@@ -4,7 +4,7 @@ export type AdminDonor = {
   id: string;
   full_name: string;
   email: string;
-  age: number;
+  age_range: string | null;
   gender: string;
   country: string;
   city: string;
@@ -40,7 +40,7 @@ export type AdminRecording = {
   review_notes: string | null;
   reviewed_at: string | null;
   created_at: string;
-  donor: Pick<AdminDonor, "id" | "full_name" | "email" | "gender" | "dialect" | "country" | "city"> | null;
+  donor: Pick<AdminDonor, "id" | "full_name" | "email" | "age_range" | "gender" | "dialect" | "country" | "city"> | null;
 };
 
 export type DonorSummary = AdminDonor & {

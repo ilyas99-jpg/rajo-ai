@@ -20,7 +20,7 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardData> {
   const [donorsResult, recordingsResult] = await Promise.all([
     sb
       .from("voice_donors")
-      .select("id, full_name, email, age, gender, country, city, dialect, consent, voice_profile_id, status, created_at")
+      .select("id, full_name, email, age_range, gender, country, city, dialect, consent, voice_profile_id, status, created_at")
       .order("created_at", { ascending: false }),
     sb
       .from("voice_recordings")
@@ -50,6 +50,7 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardData> {
           id,
           full_name,
           email,
+          age_range,
           gender,
           dialect,
           country,
@@ -195,8 +196,8 @@ type ExportRow = {
   status: string;
   created_at: string;
   voice_donors:
-    | { gender: string | null; dialect: string | null; country: string | null; city: string | null }
-    | Array<{ gender: string | null; dialect: string | null; country: string | null; city: string | null }>
+    | { age_range: string | null; gender: string | null; dialect: string | null; country: string | null; city: string | null }
+    | Array<{ age_range: string | null; gender: string | null; dialect: string | null; country: string | null; city: string | null }>
     | null;
 };
 
@@ -220,7 +221,7 @@ export async function exportDatasetCsv(options: ExportOptions): Promise<void> {
       quality_score,
       status,
       created_at,
-      voice_donors ( gender, dialect, country, city )
+      voice_donors ( age_range, gender, dialect, country, city )
     `)
     .eq("status", "approved")
     .order("created_at", { ascending: true });
@@ -282,7 +283,7 @@ export async function exportDatasetCsv(options: ExportOptions): Promise<void> {
       "Somali",
       r.dialect   || donor?.dialect   || "",
       r.gender    || donor?.gender    || "",
-      r.age_range ?? "",
+      r.age_range || donor?.age_range || "",
       r.country   || donor?.country   || "",
       r.city      || donor?.city      || "",
       r.duration_seconds ?? "",

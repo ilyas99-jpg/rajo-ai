@@ -21,6 +21,7 @@ type DonorRecordingGroup = {
   donorId: string;
   name: string;
   email: string;
+  ageRange: string;
   gender: string;
   dialect: string;
   country: string;
@@ -452,6 +453,7 @@ function groupRecordingsByDonor(recordings: AdminRecording[]): DonorRecordingGro
       donorId,
       name: recording.donor?.full_name ?? "Unknown donor",
       email: recording.donor?.email ?? "",
+      ageRange: recording.age_range || recording.donor?.age_range || "-",
       gender: recording.donor?.gender || recording.gender || "-",
       dialect: recording.donor?.dialect || recording.dialect || "-",
       country: recording.country || recording.donor?.country || "-",
@@ -513,6 +515,7 @@ function DonorRecordingsCard({
           <p className="text-sm font-semibold text-slate-500">{group.email || "No email"}</p>
           <div className="mt-2 flex flex-wrap gap-2 text-xs">
             <MetaPill label="Gender" value={group.gender} />
+            <MetaPill label="Age" value={group.ageRange} />
             <MetaPill label="Dialect" value={group.dialect} />
             <MetaPill label="Country" value={group.country} />
             <MetaPill label="City" value={group.city} />
