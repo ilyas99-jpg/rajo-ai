@@ -33,6 +33,7 @@ export type RegisteredUser = {
   dialect: string;
   consent: boolean;
   voiceProfileId: string;
+  avatarUrl?: string;
 };
 
 export type VoicePrompt = {

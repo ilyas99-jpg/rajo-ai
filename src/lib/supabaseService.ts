@@ -21,6 +21,7 @@ type DonorRow = {
   dialect: string;
   consent: boolean;
   voice_profile_id: string | null;
+  avatar_url: string | null;
 };
 
 type RecordingRow = {
@@ -85,6 +86,7 @@ const mapDonorRow = (row: DonorRow): AuthProfile => ({
     dialect: row.dialect,
     consent: row.consent,
     voiceProfileId: row.voice_profile_id ?? `voice-profile-${row.id}`,
+    avatarUrl: row.avatar_url ?? undefined,
   },
 });
 
@@ -99,7 +101,7 @@ const mapRecordingRow = (row: RecordingRow): RecordingHistoryItem => ({
 });
 
 const donorProfileSelect =
-  "id, auth_user_id, full_name, email, age, age_range, gender, country, city, dialect, consent, voice_profile_id";
+  "id, auth_user_id, full_name, email, age, age_range, gender, country, city, dialect, consent, voice_profile_id, avatar_url";
 
 async function getProfileByAuthUserId(authUserId: string): Promise<AuthProfile | null> {
   const { data, error } = await getSupabase()
@@ -235,6 +237,19 @@ export async function loginWithPassword(
 export async function logoutUser(): Promise<void> {
   const { error } = await getSupabase().auth.signOut();
   if (error) throw new Error(`Logout failed: ${error.message}`);
+}
+
+export async function updateUserLanguagePreference(donorId: string, language: "en" | "so"): Promise<void> {
+  const { error } = await getSupabase()
+    .from("voice_donors")
+    .update({ interface_language: language })
+    .eq("id", donorId);
+
+  if (error) {
+    const missingColumn = error.code === "42703" || /interface_language/i.test(error.message);
+    if (missingColumn) return;
+    throw new Error(`Could not save language preference: ${error.message}`);
+  }
 }
 
 export async function fetchDonorProgress(donorId: string): Promise<ProgressSnapshot> {
@@ -727,4 +742,49 @@ export async function fetchPublicStats(): Promise<PublicStats> {
     dialects_covered:          Number(raw?.dialects_covered          ?? 0),
     countries_covered:         Number(raw?.countries_covered         ?? 0),
   };
+}
+
+// ── Profile management ───────────────────────────────────────────
+
+export type ProfileUpdates = {
+  fullName?: string;
+  country?: string;
+  dialect?: string;
+};
+
+export async function updateUserProfile(donorId: string, updates: ProfileUpdates): Promise<void> {
+  const sb = getSupabase();
+  const dbUpdates: Record<string, string> = {};
+  if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
+  if (updates.country  !== undefined) dbUpdates.country   = updates.country;
+  if (updates.dialect  !== undefined) dbUpdates.dialect   = updates.dialect;
+
+  if (Object.keys(dbUpdates).length === 0) return;
+
+  const { error } = await sb.from("voice_donors").update(dbUpdates).eq("id", donorId);
+  if (error) throw new Error(`Could not update profile: ${error.message}`);
+}
+
+export async function uploadAvatarPhoto(authUserId: string, donorId: string, file: File): Promise<string> {
+  const sb = getSupabase();
+  const ext  = file.name.split(".").pop() ?? "jpg";
+  const path = `avatars/${authUserId}.${ext}`;
+
+  const { error: uploadError } = await sb.storage
+    .from("avatars")
+    .upload(path, file, { upsert: true, contentType: file.type });
+
+  if (uploadError) throw new Error(`Could not upload avatar: ${uploadError.message}`);
+
+  const { data: urlData } = sb.storage.from("avatars").getPublicUrl(path);
+  const avatarUrl = urlData.publicUrl;
+
+  const { error: updateError } = await sb
+    .from("voice_donors")
+    .update({ avatar_url: avatarUrl })
+    .eq("id", donorId);
+
+  if (updateError) throw new Error(`Could not save avatar: ${updateError.message}`);
+
+  return avatarUrl;
 }

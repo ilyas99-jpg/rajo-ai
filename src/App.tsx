@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Award, CheckCircle2, Flame, Mic, Star, Trophy, XCircle } from "lucide-react";
+import { Award, BarChart2, Bell, CheckCircle2, ChevronLeft, ChevronRight, Clock, Flame, Globe, Lock, LogOut, Mic, RotateCcw, Shield, Star, Trophy, Upload, User, XCircle } from "lucide-react";
 import { Navbar } from "./components/Navbar";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { BrandWaveform } from "./components/Brand";
@@ -12,13 +12,17 @@ import {
   loginWithPassword,
   logoutUser,
   registerAndCreateProfile,
+  updateUserProfile,
+  updateUserLanguagePreference,
   uploadAndSaveRecording,
+  uploadAvatarPhoto,
 } from "./lib/supabaseService";
-import type { PublicStats } from "./lib/supabaseService";
+import { useLanguage } from "./i18n";
+import type { ProfileUpdates, PublicStats } from "./lib/supabaseService";
 import type { AgeRange, PromptPack, RecordingHistoryItem, RecordingMetadata, RegisteredUser, RegistrationFormData, VoicePrompt } from "./types";
 import { createRegisteredUser } from "./utils/submissions";
 
-type View = "home" | "about" | "auth" | "dashboard" | "record";
+type View = "home" | "about" | "auth" | "dashboard" | "record" | "profile" | "contributions" | "settings";
 type AuthMode = "register" | "login";
 type RecorderState = "idle" | "starting" | "recording" | "recorded";
 
@@ -79,10 +83,12 @@ function App() {
 }
 
 function VoiceCollectionApp() {
+  const { language, t } = useLanguage();
   const [view, setView] = useState<View>(() => getInitialView());
   const [authMode, setAuthMode] = useState<AuthMode>("register");
   const [authLoading, setAuthLoading] = useState(true);
   const [user, setUser] = useState<RegisteredUser | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | undefined>(undefined);
   const [donorId, setDonorId] = useState<string | null>(null);
   const [history, setHistory] = useState<RecordingHistoryItem[]>([]);
   const [completedPromptIds, setCompletedPromptIds] = useState<string[]>([]);
@@ -122,10 +128,14 @@ function VoiceCollectionApp() {
 
         if (profile) {
           setUser(profile.user);
+          setAvatarUrl(profile.user.avatarUrl);
           setDonorId(profile.donorId);
           setLoginEmail(profile.user.email);
           await loadProgress(profile.donorId, profile.user.authUserId, profile.user.dialect);
           if (startingPath === "/record") setView("record");
+          else if (startingPath === "/profile") setView("profile");
+          else if (startingPath === "/contributions") setView("contributions");
+          else if (startingPath === "/settings") setView("settings");
           else if (startingPath !== "/about") setView("dashboard");
         }
       } catch (err) {
@@ -146,6 +156,11 @@ function VoiceCollectionApp() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  useEffect(() => {
+    if (!user || !donorId) return;
+    updateUserLanguagePreference(donorId, language).catch(() => {});
+  }, [donorId, language, user]);
 
   function navigate(nextView: View, path: string) {
     window.history.pushState({}, "", path);
@@ -181,6 +196,7 @@ function VoiceCollectionApp() {
       const created = createRegisteredUser(formData);
       const profile = await registerAndCreateProfile(created, formData.password);
       setUser(profile.user);
+      setAvatarUrl(profile.user.avatarUrl);
       setDonorId(profile.donorId);
       setFormData(initialFormData);
       setLoginEmail(profile.user.email);
@@ -204,6 +220,7 @@ function VoiceCollectionApp() {
     try {
       const profile = await loginWithPassword(loginEmail, loginPassword);
       setUser(profile.user);
+      setAvatarUrl(profile.user.avatarUrl);
       setDonorId(profile.donorId);
       setLoginPassword("");
       await loadProgress(profile.donorId, profile.user.authUserId, profile.user.dialect);
@@ -220,6 +237,7 @@ function VoiceCollectionApp() {
   async function handleLogout() {
     await logoutUser();
     setUser(null);
+    setAvatarUrl(undefined);
     setDonorId(null);
     setHistory([]);
     setCompletedPromptIds([]);
@@ -228,6 +246,28 @@ function VoiceCollectionApp() {
     setUnlockNotice("");
     setPromptProgressMessage("");
     navigate("home", "/");
+  }
+
+  async function handleProfileSave(updates: ProfileUpdates, avatarFile?: File) {
+    if (!user || !donorId) return;
+    await updateUserProfile(donorId, updates);
+    if (avatarFile) {
+      const url = await uploadAvatarPhoto(user.authUserId, donorId, avatarFile);
+      setAvatarUrl(url);
+      setUser((prev) => prev ? { ...prev, avatarUrl: url } : prev);
+    }
+    if (updates.fullName || updates.country || updates.dialect) {
+      setUser((prev) =>
+        prev
+          ? {
+              ...prev,
+              fullName: updates.fullName ?? prev.fullName,
+              country:  updates.country  ?? prev.country,
+              dialect:  updates.dialect  ?? prev.dialect,
+            }
+          : prev,
+      );
+    }
   }
 
   async function handleSubmitRecording(prompt: VoicePrompt, blob: Blob, metadata: RecordingMetadata) {
@@ -278,10 +318,11 @@ function VoiceCollectionApp() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-slate-950">
+    <div key={language} className="min-h-screen bg-white text-slate-950">
       <Navbar
         activeView={view}
         user={user}
+        avatarUrl={avatarUrl}
         onHome={() => navigate("home", "/")}
         onAbout={() => navigate("about", "/about")}
         onHowItWorks={() => {
@@ -290,15 +331,16 @@ function VoiceCollectionApp() {
             document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
           });
         }}
-        onDashboard={() => navigate(user ? "dashboard" : "home", "/")}
         onSignIn={() => startFromHome("login")}
         onSignOut={handleLogout}
-        onMyRecordings={() => navigate(user ? "dashboard" : "home", "/")}
+        onProfile={() => user ? navigate("profile", "/profile") : startFromHome("login")}
+        onContributions={() => user ? navigate("contributions", "/contributions") : startFromHome("login")}
+        onSettings={() => user ? navigate("settings", "/settings") : startFromHome("login")}
       />
 
       <main>
         {authLoading ? (
-          <CenteredMessage text="Loading Rajo AI..." />
+          <CenteredMessage text={t("common.loading")} />
         ) : view === "home" ? (
           <HomePage onAbout={() => navigate("about", "/about")} onStart={() => startFromHome("register", "record")} />
         ) : view === "about" ? (
@@ -342,6 +384,29 @@ function VoiceCollectionApp() {
             onBack={() => navigate("dashboard", "/")}
             onSubmitRecording={handleSubmitRecording}
           />
+        ) : view === "profile" && user ? (
+          <ProfilePage
+            user={user}
+            donorId={donorId!}
+            onSave={handleProfileSave}
+            onBack={() => navigate("home", "/")}
+          />
+        ) : view === "contributions" && user ? (
+          <ContributionsPage
+            history={history}
+            promptPacks={promptPacks}
+            stats={stats}
+            user={user}
+            onRecord={() => navigate("record", "/record")}
+            onBack={() => navigate("home", "/")}
+          />
+        ) : view === "settings" && user ? (
+          <SettingsPage
+            user={user}
+            onSignOut={handleLogout}
+            onBack={() => navigate("home", "/")}
+            onProfile={() => navigate("profile", "/profile")}
+          />
         ) : (
           <HomePage onAbout={() => navigate("about", "/about")} onStart={() => startFromHome("register", "record")} />
         )}
@@ -352,18 +417,19 @@ function VoiceCollectionApp() {
 
 
 function AboutPage({ onStart }: { onStart: () => void }) {
+  const { t } = useLanguage();
   return (
     <div className="bg-white">
 
       {/* SECTION 1: HERO */}
       <section className="border-b border-slate-100 bg-white px-5 py-20 sm:py-28">
         <div className="mx-auto max-w-3xl text-center">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">About Rajo AI</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("about.eyebrow")}</p>
           <h1 className="mt-5 text-4xl font-black leading-tight text-slate-950 sm:text-6xl">
-            Building ethical Somali voice technology with real Somali voices.
+            {t("about.title")}
           </h1>
           <p className="mt-6 text-lg leading-8 text-slate-500">
-            Codkeenna maanta wuxuu dhisayaa mustaqbalka Af-Soomaaliga.
+            {t("about.subtitle")}
           </p>
         </div>
       </section>
@@ -390,12 +456,12 @@ function AboutPage({ onStart }: { onStart: () => void }) {
       {/* SECTION 3: OUR MISSION */}
       <section className="bg-white px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-2xl">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Our mission</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("about.mission.label")}</p>
           <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">
-            Language should not be a barrier to technology.
+            {t("about.mission.title")}
           </h2>
           <p className="mt-6 text-lg leading-9 text-slate-600">
-            Rajo AI collects high-quality Somali voice data with consent, respect, and transparency so future AI systems can understand and speak Somali more naturally.
+            {t("about.mission.text")}
           </p>
         </div>
       </section>
@@ -403,8 +469,8 @@ function AboutPage({ onStart }: { onStart: () => void }) {
       {/* SECTION 4: WHY IT MATTERS */}
       <section className="bg-[#F7FAFF] px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-5xl">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Why it matters</p>
-          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">Somali deserves a seat in the AI future.</h2>
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("about.why.label")}</p>
+          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">{t("about.why.title")}</h2>
           <div className="mt-10 grid gap-5 sm:grid-cols-3">
             <article className="rounded-2xl border border-slate-100 bg-white p-7">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
@@ -412,8 +478,8 @@ function AboutPage({ onStart }: { onStart: () => void }) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a9 9 0 0 1 18 0M3 9v5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9m10 0v5a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2V9" />
                 </svg>
               </div>
-              <h3 className="mt-5 font-black text-slate-950">Underrepresented language</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">Somali is spoken by over 20 million people, yet it remains one of the least supported languages in modern speech AI.</p>
+              <h3 className="mt-5 font-black text-slate-950">{t("about.why.card1.title")}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{t("about.why.card1.text")}</p>
             </article>
             <article className="rounded-2xl border border-slate-100 bg-white p-7">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
@@ -422,8 +488,8 @@ function AboutPage({ onStart }: { onStart: () => void }) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 11.5v3a7 7 0 0 0 14 0v-3M12 21v-2.5" />
                 </svg>
               </div>
-              <h3 className="mt-5 font-black text-slate-950">Real accents and dialects</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">AI needs to hear Somali the way Somalis actually speak it with regional accents, natural rhythm, and real dialects.</p>
+              <h3 className="mt-5 font-black text-slate-950">{t("about.why.card2.title")}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{t("about.why.card2.text")}</p>
             </article>
             <article className="rounded-2xl border border-slate-100 bg-white p-7">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
@@ -431,8 +497,8 @@ function AboutPage({ onStart }: { onStart: () => void }) {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" />
                 </svg>
               </div>
-              <h3 className="mt-5 font-black text-slate-950">Our language, our future</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">If we don't build this now, Somali risks being left behind as the world moves deeper into voice-driven technology.</p>
+              <h3 className="mt-5 font-black text-slate-950">{t("about.why.card3.title")}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{t("about.why.card3.text")}</p>
             </article>
           </div>
         </div>
@@ -441,8 +507,8 @@ function AboutPage({ onStart }: { onStart: () => void }) {
       {/* SECTION 5: PRIVACY & ETHICS */}
       <section className="bg-white px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-5xl">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Privacy & ethics</p>
-          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">Built with care and respect.</h2>
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("about.privacy.label")}</p>
+          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">{t("about.privacy.title")}</h2>
           <div className="mt-10 grid gap-5 sm:grid-cols-3">
             <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-[#F7FAFF] p-7">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#467ED3]/10">
@@ -451,8 +517,8 @@ function AboutPage({ onStart }: { onStart: () => void }) {
                 </svg>
               </div>
               <div>
-                <h3 className="font-black text-slate-950">Consent-based contribution</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-500">Every recording begins with clear, explicit consent from the contributor. You are always in control.</p>
+                <h3 className="font-black text-slate-950">{t("about.privacy.card1.title")}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{t("about.privacy.card1.text")}</p>
               </div>
             </div>
             <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-[#F7FAFF] p-7">
@@ -462,8 +528,8 @@ function AboutPage({ onStart }: { onStart: () => void }) {
                 </svg>
               </div>
               <div>
-                <h3 className="font-black text-slate-950">Private audio storage</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-500">All recordings are stored in a secure, private bucket never publicly accessible without authorization.</p>
+                <h3 className="font-black text-slate-950">{t("about.privacy.card2.title")}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{t("about.privacy.card2.text")}</p>
               </div>
             </div>
             <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-[#F7FAFF] p-7">
@@ -473,8 +539,8 @@ function AboutPage({ onStart }: { onStart: () => void }) {
                 </svg>
               </div>
               <div>
-                <h3 className="font-black text-slate-950">Admin-reviewed submissions</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-500">Every recording is manually reviewed before it enters the dataset — quality and care at every step.</p>
+                <h3 className="font-black text-slate-950">{t("about.privacy.card3.title")}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{t("about.privacy.card3.text")}</p>
               </div>
             </div>
           </div>
@@ -484,9 +550,9 @@ function AboutPage({ onStart }: { onStart: () => void }) {
       {/* SECTION 6: CONTACT */}
       <section className="border-t border-slate-100 bg-white px-5 py-16 sm:py-20">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Get in touch</p>
-          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">Questions or partnerships?</h2>
-          <p className="mt-4 text-slate-500">We'd love to hear from researchers, community organizations, and anyone who wants to help Somali voice technology grow.</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("about.contact.label")}</p>
+          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">{t("about.contact.title")}</h2>
+          <p className="mt-4 text-slate-500">{t("about.contact.text")}</p>
           <a
             className="mt-8 inline-block rounded-xl bg-[#467ED3] px-8 py-3.5 text-base font-black text-white shadow-sm transition hover:bg-[#3a6ec0]"
             href="mailto:hello@rajoai.com"
@@ -495,10 +561,10 @@ function AboutPage({ onStart }: { onStart: () => void }) {
           </a>
           <div className="mt-14 border-t border-slate-100 pt-10">
             <button className="btn-primary px-8 py-3 text-base" onClick={onStart}>
-              Contribute your voice →
+              {t("about.start")}
             </button>
             <p className="mt-4 text-sm italic text-[#467ED3]">
-              Ku deeq codkaaga si aad uga qayb qaadato horumarinta luuqadda Soomaaliga.
+              {t("about.start.note")}
             </p>
           </div>
         </div>
@@ -920,6 +986,7 @@ function Dashboard({
   user: RegisteredUser;
   onRecord: () => void;
 }) {
+  const { t } = useLanguage();
   const [publicStats, setPublicStats] = useState<PublicStats | null>(null);
 
   useEffect(() => {
@@ -936,15 +1003,15 @@ function Dashboard({
   const remainingPrompts = Math.max(totalPrompts - completedCount, 0);
   const unlockedCount = promptPacks.length;
   const progressPct = totalPrompts > 0 ? Math.min(Math.round((completedCount / totalPrompts) * 100), 100) : 0;
-  const rank = getContributorRank(stats.total);
+  const rank = getContributorRank(stats.total, t);
   const DAILY_GOAL = 5;
 
   const milestones = [
-    { icon: <Mic className="h-3.5 w-3.5" />, label: "First Recording", unlocked: stats.total >= 1 },
-    { icon: <Flame className="h-3.5 w-3.5" />, label: "3-Day Streak", unlocked: streak >= 3 },
-    { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: "First Approval", unlocked: stats.approved >= 1 },
-    { icon: <Star className="h-3.5 w-3.5" />, label: "10 Recordings", unlocked: stats.total >= 10 },
-    { icon: <Trophy className="h-3.5 w-3.5" />, label: "25 Recordings", unlocked: stats.total >= 25 },
+    { icon: <Mic className="h-3.5 w-3.5" />, label: t("dashboard.firstRecording"), unlocked: stats.total >= 1 },
+    { icon: <Flame className="h-3.5 w-3.5" />, label: t("dashboard.threeDayStreak"), unlocked: streak >= 3 },
+    { icon: <CheckCircle2 className="h-3.5 w-3.5" />, label: t("dashboard.firstApproval"), unlocked: stats.approved >= 1 },
+    { icon: <Star className="h-3.5 w-3.5" />, label: t("dashboard.tenRecordings"), unlocked: stats.total >= 10 },
+    { icon: <Trophy className="h-3.5 w-3.5" />, label: t("dashboard.twentyFiveRecordings"), unlocked: stats.total >= 25 },
   ];
 
   const DATASET_GOAL = 10_000;
@@ -965,17 +1032,17 @@ function Dashboard({
           </div>
 
           <div className="relative z-10 max-w-lg">
-            <p className="text-[11px] font-black uppercase tracking-widest opacity-60">Contributor Dashboard</p>
+            <p className="text-[11px] font-black uppercase tracking-widest opacity-60">{t("dashboard.label")}</p>
             <h1 className="mt-3 text-2xl font-black leading-snug sm:text-[1.75rem]">
-              {firstName(user.fullName)}, your voice matters.
+              {firstName(user.fullName)}, {t("dashboard.titleSuffix")}
             </h1>
             <p className="mt-3 text-sm leading-[1.75] opacity-75">
-              Every recording you submit helps future AI systems understand Somali voices, accents, and dialects.
+              {t("dashboard.body")}
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm font-semibold opacity-70">
               {streak > 0 && (
                 <span className="flex items-center gap-1.5">
-                  <Flame className="h-3.5 w-3.5" /> {streak}-day streak
+                  <Flame className="h-3.5 w-3.5" /> {t("dashboard.streakDays", { count: streak })}
                 </span>
               )}
               <span className="flex items-center gap-1.5">
@@ -986,7 +1053,7 @@ function Dashboard({
               className="mt-7 rounded-xl bg-white px-6 py-2.5 text-sm font-black text-[#467ED3] shadow-sm transition hover:bg-blue-50"
               onClick={onRecord}
             >
-              Continue Recording →
+              {t("dashboard.continue")}
             </button>
           </div>
         </div>
@@ -995,13 +1062,13 @@ function Dashboard({
         <div className="rounded-3xl bg-white p-6 shadow-sm">
           <div className="flex items-baseline justify-between gap-4">
             <div>
-              <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Current Pack Progress</p>
+              <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("dashboard.packProgress")}</p>
               <p className="mt-1.5 text-xl font-black text-slate-950">
-                {promptLoading ? "Loading prompt set..." : `${completedCount} of ${totalPrompts} prompts completed`}
+                {promptLoading ? t("dashboard.loadingPrompts") : t("dashboard.promptsCompleted", { completed: completedCount, total: totalPrompts })}
               </p>
               {currentPack && (
                 <p className="mt-1 text-sm font-semibold text-slate-500">
-                  Current set: {currentPack.title} · {unlockedCount} unlocked
+                  {t("dashboard.currentSet", { title: translatePackTitle(currentPack.title, t), count: unlockedCount })}
                 </p>
               )}
             </div>
@@ -1015,36 +1082,36 @@ function Dashboard({
           </div>
           <p className="mt-3 text-sm leading-6 text-slate-500">
             {promptProgressMessage || (completedCount === 0
-              ? "Record your first prompt to begin contributing to the Somali voice dataset."
+              ? t("dashboard.firstPrompt")
               : completedCount < totalPrompts
-                ? `${remainingPrompts} prompts remaining in this pack — each one adds to a language dataset that will last for generations.`
-                : "This prompt pack is complete. New prompts will appear when the next set unlocks.")}
+                ? t("dashboard.remaining", { count: remainingPrompts })
+                : t("dashboard.packComplete"))}
           </p>
         </div>
 
         {/* Total Contributions */}
         <div className="space-y-3">
-          <p className="px-1 text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Total Contributions</p>
+          <p className="px-1 text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("dashboard.totalContributions")}</p>
           {/* Primary — what matters most */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-white p-5 shadow-sm">
               <p className="text-4xl font-black tracking-tight text-slate-950">{stats.total}</p>
-              <p className="mt-1.5 text-sm text-slate-500">Recordings submitted</p>
+              <p className="mt-1.5 text-sm text-slate-500">{t("dashboard.recordingsSubmitted")}</p>
             </div>
             <div className="rounded-2xl bg-white p-5 shadow-sm">
               <p className="text-4xl font-black tracking-tight text-slate-950">{stats.minutes.toFixed(1)}</p>
-              <p className="mt-1.5 text-sm text-slate-500">Minutes of voice donated</p>
+              <p className="mt-1.5 text-sm text-slate-500">{t("dashboard.minutesDonated")}</p>
             </div>
           </div>
           {/* Secondary — supporting context */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
               <p className="text-lg font-black text-slate-700">{stats.approved}</p>
-              <p className="mt-0.5 text-xs text-slate-400">Recordings approved</p>
+              <p className="mt-0.5 text-xs text-slate-400">{t("dashboard.recordingsApproved")}</p>
             </div>
             <div className="rounded-2xl bg-white px-5 py-4 shadow-sm">
-              <p className="text-lg font-black text-slate-700">{streak > 0 ? `${streak}-day` : "—"}</p>
-              <p className="mt-0.5 text-xs text-slate-400">Current streak</p>
+              <p className="text-lg font-black text-slate-700">{streak > 0 ? t("dashboard.streakDayShort", { count: streak }) : "—"}</p>
+              <p className="mt-0.5 text-xs text-slate-400">{t("dashboard.currentStreak")}</p>
             </div>
           </div>
         </div>
@@ -1052,13 +1119,13 @@ function Dashboard({
         {/* Today + Recent activity */}
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-3xl bg-white p-6 shadow-sm">
-            <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Today</p>
+            <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("dashboard.today")}</p>
             <p className="mt-2 text-xl font-black text-slate-950">
               {todayCount === 0
-                ? "No recordings yet."
+                ? t("dashboard.noToday")
                 : todayCount >= DAILY_GOAL
-                  ? "Daily goal reached."
-                  : `${todayCount} of ${DAILY_GOAL} recorded.`}
+                  ? t("dashboard.goalReached")
+                  : t("dashboard.recordedOfGoal", { count: todayCount, goal: DAILY_GOAL })}
             </p>
             <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
               <div
@@ -1068,15 +1135,15 @@ function Dashboard({
             </div>
             <p className="mt-2.5 text-xs text-slate-400">
               {todayCount >= DAILY_GOAL
-                ? "Excellent — you've reached today's goal."
-                : `${DAILY_GOAL - todayCount} more to reach today's goal of ${DAILY_GOAL}.`}
+                ? t("dashboard.goalDone")
+                : t("dashboard.goalMore", { count: DAILY_GOAL - todayCount, goal: DAILY_GOAL })}
             </p>
           </div>
 
           <div className="rounded-3xl bg-white p-6 shadow-sm">
-            <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Recent Activity</p>
+            <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("dashboard.recentActivity")}</p>
             {history.length === 0 ? (
-              <p className="mt-3 text-sm text-slate-500">No recordings yet. Start your first prompt.</p>
+              <p className="mt-3 text-sm text-slate-500">{t("dashboard.noActivity")}</p>
             ) : (
               <ul className="mt-3 space-y-3.5">
                 {history.slice(0, 4).map((item) => {
@@ -1088,10 +1155,10 @@ function Dashboard({
                         : <Mic className="h-4 w-4 text-slate-400" />;
                   const label =
                     item.status === "approved"
-                      ? "Approved"
+                      ? t("dashboard.approved")
                       : item.status === "rejected"
-                        ? "Needs re-recording"
-                        : "Submitted";
+                        ? t("dashboard.needsRerecording")
+                        : t("dashboard.submitted");
                   return (
                     <li key={item.id} className="flex items-start gap-2.5">
                       <span className="mt-0.5 shrink-0">{activityIcon}</span>
@@ -1109,7 +1176,7 @@ function Dashboard({
 
         {/* Milestones */}
         <div className="rounded-3xl bg-white p-6 shadow-sm">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">Milestones</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("dashboard.milestones")}</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {milestones.map((m) => (
               <div
@@ -1130,14 +1197,14 @@ function Dashboard({
 
         {/* The bigger picture */}
         <div className="rounded-3xl bg-white p-6 shadow-sm">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">The Bigger Picture</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("dashboard.biggerPicture")}</p>
           <div className="mt-3 flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div className="max-w-sm">
               <p className="text-lg font-black leading-snug text-slate-950">
-                You are contributing to one of the first large-scale Somali voice datasets.
+                {t("dashboard.biggerTitle")}
               </p>
               <p className="mt-2.5 text-sm leading-6 text-slate-500">
-                Together, contributors from around the world are building the foundation for AI that truly understands Somali — its voices, accents, and dialects.
+                {t("dashboard.biggerText")}
               </p>
             </div>
             <div className="shrink-0 sm:text-right">
@@ -1145,7 +1212,7 @@ function Dashboard({
                 {communityTotal.toLocaleString()}
               </p>
               <p className="mt-1 text-[11px] font-black uppercase tracking-wider text-slate-400">
-                community recordings
+                {t("dashboard.communityRecordings")}
               </p>
             </div>
           </div>
@@ -1156,8 +1223,8 @@ function Dashboard({
             />
           </div>
           <div className="mt-2 flex justify-between text-[11px] text-slate-400">
-            <span>{communityPct}% toward goal</span>
-            <span>Goal: {DATASET_GOAL.toLocaleString()} recordings</span>
+            <span>{t("dashboard.towardGoal", { pct: communityPct })}</span>
+            <span>{t("dashboard.goal", { count: DATASET_GOAL.toLocaleString() })}</span>
           </div>
           <p className="mt-5 border-t border-slate-50 pt-4 text-xs italic text-slate-400">
             "Waxaan wada dhisaynaa mustaqbalka codka Soomaalida." — Together we are building the future of the Somali voice.
@@ -1188,6 +1255,7 @@ function RecordingPage({
   onBack: () => void;
   onSubmitRecording: (prompt: VoicePrompt, blob: Blob, metadata: RecordingMetadata) => Promise<void>;
 }) {
+  const { t } = useLanguage();
   const firstIncompleteIndex = Math.max(prompts.findIndex((prompt) => !completedPromptIds.includes(prompt.sentenceId)), 0);
   const [promptIndex, setPromptIndex] = useState(firstIncompleteIndex);
   const [recorderState, setRecorderState] = useState<RecorderState>("idle");
@@ -1351,15 +1419,15 @@ function RecordingPage({
     setPromptIndex((index) => (index + 1) % prompts.length);
   }
 
-  if (!prompt) return <CenteredMessage text="No prompts are available yet." />;
+  if (!prompt) return <CenteredMessage text={t("record.none")} />;
 
   return (
     <section className="mx-auto max-w-4xl px-5 py-8">
-      <button className="btn-ghost mb-5" onClick={onBack}>Back to Dashboard</button>
+      <button className="btn-ghost mb-5" onClick={onBack}>{t("record.back")}</button>
       <div className="app-card overflow-hidden">
         <div className="border-b border-slate-200 bg-blue-50 px-5 py-4 sm:px-7">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p className="font-bold text-blue-700">Prompt {promptIndex + 1} of {prompts.length}</p>
+            <p className="font-bold text-blue-700">{t("record.promptOf", { current: promptIndex + 1, total: prompts.length })}</p>
             <p className="text-sm font-semibold text-slate-600">{user.fullName}</p>
           </div>
         </div>
@@ -1373,65 +1441,65 @@ function RecordingPage({
                   <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">{unlockBody}</p>
                 </div>
                 <button className="btn-secondary min-h-10 rounded-xl px-4 py-2 text-xs" onClick={onDismissUnlock}>
-                  Continue
+                  {t("common.continue")}
                 </button>
               </div>
             </div>
           )}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-            <p className="text-sm font-bold uppercase tracking-wide text-slate-500">Read this Somali prompt</p>
-            <p className="mt-2 text-xs font-black uppercase tracking-widest text-[#467ED3]">{prompt.packTitle}</p>
+            <p className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("record.readPrompt")}</p>
+            <p className="mt-2 text-xs font-black uppercase tracking-widest text-[#467ED3]">{translatePackTitle(prompt.packTitle, t)}</p>
             <h1 className="mt-5 text-3xl font-black leading-tight text-slate-950 sm:text-5xl">{prompt.sentenceText}</h1>
             {completed && (
               <p className="mt-5 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
-                Already completed. Submit again only if you want to re-record this prompt.
+                {t("record.completed")}
               </p>
             )}
           </div>
 
           {recorderState === "starting" && (
             <div className="mt-6 rounded-3xl border border-blue-100 bg-blue-50 p-5 text-center">
-              <p className="text-lg font-black text-blue-700">Starting microphone...</p>
+              <p className="text-lg font-black text-blue-700">{t("record.starting")}</p>
             </div>
           )}
 
           {recorderState === "recording" && (
             <div className="mt-6 rounded-3xl border border-red-100 bg-red-50 p-5 text-center">
-              <p className="text-lg font-black text-red-700">Recording...</p>
+              <p className="text-lg font-black text-red-700">{t("record.recording")}</p>
             </div>
           )}
 
           {audioUrl && (
             <div className="mt-6 rounded-3xl border border-blue-100 bg-blue-50 p-4">
               <audio ref={audioRef} className="w-full" controls src={audioUrl} />
-              <p className="mt-2 text-sm font-semibold text-blue-700">Duration: {duration.toFixed(1)} seconds</p>
+              <p className="mt-2 text-sm font-semibold text-blue-700">{t("record.duration", { seconds: duration.toFixed(1) })}</p>
             </div>
           )}
 
           <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
-            <h2 className="text-lg font-black text-slate-950">Recording details</h2>
+            <h2 className="text-lg font-black text-slate-950">{t("record.details")}</h2>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <SelectField label="Device Type" value={metadata.deviceType} onChange={(value) => setMetadata({ ...metadata, deviceType: value })} options={["Phone", "Laptop", "External Microphone"]} />
-              <SelectField label="Background Noise" value={metadata.backgroundNoise} onChange={(value) => setMetadata({ ...metadata, backgroundNoise: value })} options={["Quiet", "Medium", "Noisy"]} />
-              <SelectField label="Speaking Speed" value={metadata.speakingSpeed} onChange={(value) => setMetadata({ ...metadata, speakingSpeed: value })} options={["Slow", "Normal", "Fast"]} />
+              <SelectField label={t("record.device")} value={metadata.deviceType} onChange={(value) => setMetadata({ ...metadata, deviceType: value })} options={["Phone", "Laptop", "External Microphone"]} />
+              <SelectField label={t("record.noise")} value={metadata.backgroundNoise} onChange={(value) => setMetadata({ ...metadata, backgroundNoise: value })} options={["Quiet", "Medium", "Noisy"]} />
+              <SelectField label={t("record.speed")} value={metadata.speakingSpeed} onChange={(value) => setMetadata({ ...metadata, speakingSpeed: value })} options={["Slow", "Normal", "Fast"]} />
             </div>
           </div>
 
           <div className="mt-7 flex flex-wrap gap-3">
             {recorderState === "idle" && (
               <>
-                <button className="btn-primary" type="button" onClick={() => void startRecording()}>Start Recording</button>
-                <button className="btn-secondary" onClick={skipPrompt}>Skip Prompt</button>
+                <button className="btn-primary" type="button" onClick={() => void startRecording()}>{t("common.startRecording")}</button>
+                <button className="btn-secondary" onClick={skipPrompt}>{t("record.skip")}</button>
               </>
             )}
             {recorderState === "recording" && (
-              <button className="btn-danger" onClick={stopRecording}>Stop Recording</button>
+              <button className="btn-danger" onClick={stopRecording}>{t("record.stop")}</button>
             )}
             {recorderState === "recorded" && (
               <>
-                <button className="btn-secondary" onClick={() => audioRef.current?.play()}>Play Recording</button>
-                <button className="btn-secondary" onClick={resetRecording}>Re-record</button>
-                <button className="btn-primary" disabled={busy} onClick={submitRecording}>{busy ? "Submitting..." : "Submit Recording"}</button>
+                <button className="btn-secondary" onClick={() => audioRef.current?.play()}>{t("record.play")}</button>
+                <button className="btn-secondary" onClick={resetRecording}>{t("record.rerecord")}</button>
+                <button className="btn-primary" disabled={busy} onClick={submitRecording}>{busy ? t("record.submitting") : t("record.submit")}</button>
               </>
             )}
           </div>
@@ -1439,7 +1507,7 @@ function RecordingPage({
           {error && <p className="mt-5 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
 
           <div className="mt-8">
-            <h2 className="text-lg font-black text-slate-950">Recent recordings</h2>
+            <h2 className="text-lg font-black text-slate-950">{t("record.recent")}</h2>
             <div className="mt-3 space-y-3">
               {history.slice(0, 4).map((item) => (
                 <div className="flex items-center justify-between rounded-2xl border border-slate-200 p-3" key={item.id}>
@@ -1447,7 +1515,7 @@ function RecordingPage({
                   <StatusPill status={item.status} />
                 </div>
               ))}
-              {history.length === 0 && <p className="text-sm text-slate-500">No recordings yet.</p>}
+              {history.length === 0 && <p className="text-sm text-slate-500">{t("common.noRecordingsYet")}</p>}
             </div>
           </div>
         </div>
@@ -1455,6 +1523,742 @@ function RecordingPage({
     </section>
   );
 }
+
+// ── Profile Page ────────────────────────────────────────────────
+
+function ProfilePage({
+  user,
+  donorId,
+  onSave,
+  onBack,
+}: {
+  user: RegisteredUser;
+  donorId: string;
+  onSave: (updates: ProfileUpdates, avatarFile?: File) => Promise<void>;
+  onBack: () => void;
+}) {
+  const [name, setName]       = useState(user.fullName);
+  const [country, setCountry] = useState(user.country);
+  const [dialect, setDialect] = useState(user.dialect);
+  const [busy, setBusy]       = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError]     = useState("");
+  const [previewUrl, setPreviewUrl] = useState<string | undefined>(user.avatarUrl);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const userInitial = user.fullName[0]?.toUpperCase() ?? "U";
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+  }
+
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    setSuccess(false);
+    try {
+      const file = fileInputRef.current?.files?.[0];
+      await onSave({ fullName: name, country, dialect }, file);
+      setSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save profile.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F7FAFF] px-5 py-10">
+      <div className="mx-auto max-w-xl">
+        <button
+          onClick={onBack}
+          className="mb-8 flex items-center gap-1.5 text-[13px] font-medium text-slate-500 transition-colors hover:text-slate-800 focus:outline-none"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Back
+        </button>
+
+        <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-8 py-6">
+            <p className="text-[11px] font-black uppercase tracking-widest text-[#467ed3]">Account</p>
+            <h1 className="mt-1 text-2xl font-black text-slate-950">Your Profile</h1>
+            <p className="mt-1 text-sm text-slate-500">Update your personal information and profile photo.</p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="px-8 py-7 space-y-6">
+            {/* Avatar upload */}
+            <div className="flex items-center gap-5">
+              <div className="relative shrink-0">
+                {previewUrl ? (
+                  <img
+                    src={previewUrl}
+                    alt="Profile"
+                    className="h-20 w-20 rounded-full object-cover ring-4 ring-[#467ed3]/10"
+                  />
+                ) : (
+                  <span
+                    style={{ backgroundColor: "#467ed3" }}
+                    className="flex h-20 w-20 items-center justify-center rounded-full text-3xl font-black text-white ring-4 ring-[#467ed3]/10"
+                  >
+                    {userInitial}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#467ed3] text-white shadow transition hover:bg-[#3a6bbf] focus:outline-none"
+                  aria-label="Change profile photo"
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Profile photo</p>
+                <p className="mt-0.5 text-xs text-slate-500">JPG, PNG or WebP. Max 5 MB.</p>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-2 text-xs font-semibold text-[#467ed3] hover:underline focus:outline-none"
+                >
+                  Upload photo
+                </button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+
+            <div className="h-px bg-slate-100" />
+
+            {/* Name */}
+            <label className="block">
+              <span className="field-label">Full name</span>
+              <input
+                className="field"
+                type="text"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+
+            {/* Email (read-only) */}
+            <label className="block">
+              <span className="field-label">Email address</span>
+              <input
+                className="field bg-slate-50 text-slate-500 cursor-not-allowed"
+                type="email"
+                value={user.email}
+                readOnly
+              />
+              <p className="mt-1 text-[11px] text-slate-400">Email cannot be changed here.</p>
+            </label>
+
+            {/* Country */}
+            <label className="block">
+              <span className="field-label">Country</span>
+              <select
+                className="field"
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+              >
+                {["Somalia", "Kenya", "Ethiopia", "Djibouti", "Uganda", "USA", "UK", "Canada"].map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+                <optgroup label="Other">
+                  {["Australia", "Belgium", "Denmark", "Finland", "France", "Germany", "Netherlands", "New Zealand", "Norway", "Sweden", "Switzerland", "United Arab Emirates"].map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
+
+            {/* Dialect */}
+            <label className="block">
+              <span className="field-label">Dialect</span>
+              <select
+                className="field"
+                value={dialect}
+                onChange={(e) => setDialect(e.target.value)}
+              >
+                <option value="Maxaa Tiri">Maxaa Tiri</option>
+                <option value="May May">May May</option>
+              </select>
+            </label>
+
+            {success && (
+              <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                Profile updated successfully.
+              </p>
+            )}
+            {error && (
+              <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={busy}
+              className="btn-primary w-full"
+            >
+              {busy ? "Saving…" : "Save changes"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Contributions Page ───────────────────────────────────────────
+
+function ContributionsPage({
+  history,
+  promptPacks,
+  stats,
+  user,
+  onRecord,
+  onBack,
+}: {
+  history: RecordingHistoryItem[];
+  promptPacks: PromptPack[];
+  stats: { total: number; minutes: number; approved: number; pending: number };
+  user: RegisteredUser;
+  onRecord: () => void;
+  onBack: () => void;
+}) {
+  const { t } = useLanguage();
+  const rejected       = history.filter((r) => r.status === "rejected").length;
+  const activePacks    = promptPacks.filter((p) => p.completedAt === null);
+  const completedPacks = promptPacks.filter((p) => p.completedAt !== null);
+  const streak         = calculateStreak(history);
+  const rank           = getContributorRank(stats.total, t);
+
+  const statCards = [
+    {
+      label: "Total",    sub: "Recordings", value: stats.total,    desc: "sentences donated",
+      Icon: Mic,          iconBg: "bg-[#467ed3]/[0.07]", iconColor: "text-[#467ed3]", numColor: "text-slate-900",
+    },
+    {
+      label: "Approved", sub: "Recordings", value: stats.approved, desc: "added to the dataset",
+      Icon: CheckCircle2, iconBg: "bg-emerald-50",       iconColor: "text-emerald-500", numColor: "text-emerald-600",
+    },
+    {
+      label: "Pending",  sub: "Review",     value: stats.pending,  desc: "being checked now",
+      Icon: Clock,        iconBg: "bg-amber-50",          iconColor: "text-amber-500",   numColor: "text-amber-600",
+    },
+    {
+      label: "Needs",    sub: "Re-record",  value: rejected,       desc: "can be re-done",
+      Icon: RotateCcw,    iconBg: "bg-red-50",            iconColor: "text-red-400",     numColor: "text-red-500",
+    },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#F8F9FB]">
+
+      {/* ── Hero ──────────────────────────────────────────── */}
+      <div className="border-b border-slate-100 bg-white">
+        <div className="mx-auto max-w-3xl px-5 py-8 sm:py-10 lg:px-6">
+          <button
+            onClick={onBack}
+            className="mb-6 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-400 transition-colors hover:text-slate-600 focus:outline-none"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Back
+          </button>
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#467ed3]">
+                Voice contributor
+              </p>
+              <h1 className="mt-1.5 text-[26px] font-black leading-tight tracking-tight text-slate-950 sm:text-[28px]">
+                Your Voice Contribution
+              </h1>
+              <p className="mt-2 max-w-md text-[14.5px] leading-relaxed text-slate-500">
+                Every sentence you record helps build ethical Somali speech technology — for everyone.
+              </p>
+            </div>
+            <button
+              onClick={onRecord}
+              style={{ backgroundColor: "#467ed3" }}
+              className="self-start rounded-xl px-5 py-2.5 text-[14px] font-semibold text-white shadow-sm transition hover:opacity-90 active:scale-95 focus:outline-none sm:mt-1 sm:shrink-0"
+            >
+              Record now
+            </button>
+          </div>
+
+          {/* Contributor summary row */}
+          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-5 text-[13px]">
+            <span className="flex items-center gap-1.5 font-semibold text-slate-700">
+              <span style={{ backgroundColor: "#467ed3" }} className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-black text-white">
+                {user.fullName[0]?.toUpperCase()}
+              </span>
+              {user.fullName}
+            </span>
+            <span className="text-slate-300">·</span>
+            <span className="text-slate-500">{user.dialect}</span>
+            <span className="text-slate-300">·</span>
+            <span className="text-slate-500">{user.country}</span>
+            {streak > 0 && (
+              <>
+                <span className="text-slate-300">·</span>
+                <span className="flex items-center gap-1 font-medium text-orange-500">
+                  <Flame className="h-3.5 w-3.5" aria-hidden="true" />
+                  {streak} day{streak !== 1 ? "s" : ""} streak
+                </span>
+              </>
+            )}
+            <span className="rounded-full bg-[#467ed3]/[0.08] px-2.5 py-0.5 text-[12px] font-semibold text-[#467ed3]">
+              {rank}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Content ───────────────────────────────────────── */}
+      <div className="mx-auto max-w-3xl space-y-4 px-5 py-6 lg:px-6">
+
+        {/* Stat cards — 2×2 on mobile, 4-col on sm+ */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {statCards.map(({ label, sub, value, desc, Icon, iconBg, iconColor, numColor }) => (
+            <div
+              key={label}
+              className="flex flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-[0_1px_4px_rgba(0,0,0,0.04)]"
+            >
+              <div className={`mb-3 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${iconBg}`}>
+                <Icon className={`h-4 w-4 ${iconColor}`} aria-hidden="true" />
+              </div>
+              <p className={`text-[26px] font-black tabular-nums leading-none ${numColor}`}>{value}</p>
+              <p className="mt-2 text-[12px] leading-tight text-slate-700">
+                <span className="font-semibold">{label}</span>{" "}
+                <span className="text-slate-400">{sub}</span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-slate-400">{desc}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Active recording packs */}
+        {activePacks.length > 0 && (
+          <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <div className="flex items-center justify-between border-b border-slate-50 px-5 py-4">
+              <div>
+                <p className="text-[13px] font-bold text-slate-900">Recording packs</p>
+                <p className="mt-0.5 text-[12px] text-slate-400">
+                  Short sets of Somali sentences to improve dialect coverage
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-[#467ed3]/[0.08] px-2.5 py-1 text-[11.5px] font-semibold text-[#467ed3]">
+                {activePacks.length} active
+              </span>
+            </div>
+
+            <div className="divide-y divide-slate-50 px-5">
+              {activePacks.map((pack) => {
+                const pct = pack.promptCount > 0
+                  ? Math.round((pack.completedPromptCount / pack.promptCount) * 100)
+                  : 0;
+                return (
+                  <div key={pack.id} className="py-4">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="truncate text-[13.5px] font-medium text-slate-800">{pack.title}</p>
+                      <span className="shrink-0 text-[12px] tabular-nums text-slate-400">
+                        {pack.completedPromptCount} / {pack.promptCount}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-[#467ed3] transition-all duration-700"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <p className="mt-1.5 text-[11.5px] text-slate-400">{pct}% complete</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="border-t border-slate-50 px-5 py-4">
+              <button
+                onClick={onRecord}
+                style={{ backgroundColor: "#467ed3" }}
+                className="w-full rounded-xl py-2.5 text-[14px] font-semibold text-white transition hover:opacity-90 active:scale-[0.99] focus:outline-none"
+              >
+                {t("common.continueRecording")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Completed packs */}
+        {completedPacks.length > 0 && (
+          <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+            <div className="flex items-center justify-between border-b border-slate-50 px-5 py-4">
+              <p className="text-[13px] font-bold text-slate-900">Completed packs</p>
+              <span className="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11.5px] font-semibold text-emerald-700">
+                {completedPacks.length} done
+              </span>
+            </div>
+            <div className="divide-y divide-slate-50 px-5">
+              {completedPacks.map((pack) => (
+                <div key={pack.id} className="flex items-center gap-3 py-3.5">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" aria-hidden="true" />
+                  <p className="flex-1 truncate text-[13.5px] font-medium text-slate-700">{pack.title}</p>
+                  <span className="shrink-0 text-[12px] text-slate-400">{pack.promptCount} sentences</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recording history */}
+        <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center justify-between border-b border-slate-50 px-5 py-4">
+            <div>
+              <p className="text-[13px] font-bold text-slate-900">Recording history</p>
+              <p className="mt-0.5 text-[12px] text-slate-400">
+                {history.length === 0
+                  ? "No recordings yet"
+                  : `${history.length} recording${history.length !== 1 ? "s" : ""} submitted`}
+              </p>
+            </div>
+            {history.length > 0 && (
+              <button
+                onClick={onRecord}
+                className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-[12.5px] font-medium text-slate-600 transition hover:bg-slate-50 active:bg-slate-100 focus:outline-none"
+              >
+                Record more
+              </button>
+            )}
+          </div>
+
+          {history.length === 0 ? (
+            <div className="px-5 py-12 text-center">
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#467ed3]/[0.07]">
+                <Mic className="h-5 w-5 text-[#467ed3]/60" aria-hidden="true" />
+              </div>
+              <p className="text-[14px] font-semibold text-slate-700">No recordings yet</p>
+              <p className="mt-1 text-[13px] text-slate-400">
+                Your voice will make a real difference. Start now.
+              </p>
+              <button
+                onClick={onRecord}
+                style={{ backgroundColor: "#467ed3" }}
+                className="mt-5 rounded-xl px-5 py-2.5 text-[13.5px] font-semibold text-white transition hover:opacity-90 focus:outline-none"
+              >
+                Start Recording
+              </button>
+            </div>
+          ) : (
+            <ul className="divide-y divide-slate-50">
+              {history.map((item) => {
+                const isRejected = item.status === "rejected";
+                const isApproved = item.status === "approved";
+                const dotColor   = isApproved ? "bg-emerald-400" : isRejected ? "bg-red-400" : "bg-amber-400";
+                const statusText = isApproved ? "Approved" : isRejected ? "Needs re-record" : "In review";
+                const statusColor = isApproved
+                  ? "text-emerald-700"
+                  : isRejected
+                    ? "text-red-600"
+                    : "text-amber-700";
+                return (
+                  <li key={item.id} className="px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13.5px] leading-snug text-slate-800">{item.sentenceText}</p>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className={`flex items-center gap-1.5 text-[12px] font-medium ${statusColor}`}>
+                            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotColor}`} aria-hidden="true" />
+                            {statusText}
+                          </span>
+                          <span className="text-[12px] text-slate-400">
+                            {new Date(item.createdAt).toLocaleDateString("en-GB", {
+                              day: "numeric", month: "short", year: "numeric",
+                            })}
+                          </span>
+                          {item.durationSeconds != null && (
+                            <span className="text-[12px] text-slate-400">{item.durationSeconds.toFixed(1)}s</span>
+                          )}
+                        </div>
+                      </div>
+                      {isRejected && (
+                        <button
+                          onClick={onRecord}
+                          className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-[12px] font-medium text-slate-600 transition hover:bg-slate-50 focus:outline-none"
+                        >
+                          Re-record
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="pb-2" />
+      </div>
+    </div>
+  );
+}
+
+// ── Settings helpers (module-level to avoid React re-render anti-pattern) ───
+
+const SPRING = "cubic-bezier(0.16, 1, 0.3, 1)";
+
+function SettingsToggle({
+  id,
+  checked,
+  onChange,
+}: {
+  id: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      id={id}
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      style={{
+        backgroundColor: checked ? "#4B82DF" : "#C8CDD6",
+        transitionProperty: "background-color",
+        transitionDuration: "220ms",
+        transitionTimingFunction: SPRING,
+      }}
+      className="relative inline-flex h-[22px] w-[40px] shrink-0 cursor-pointer rounded-full border-2 border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-[#467ed3]/40 focus-visible:ring-offset-2"
+    >
+      <span
+        style={{
+          transform: checked ? "translateX(18px)" : "translateX(0)",
+          boxShadow: "0 1px 4px rgba(0,0,0,0.18), 0 0 1px rgba(0,0,0,0.08)",
+          transitionProperty: "transform",
+          transitionDuration: "220ms",
+          transitionTimingFunction: SPRING,
+        }}
+        className="pointer-events-none inline-block h-[18px] w-[18px] rounded-full bg-white"
+      />
+    </button>
+  );
+}
+
+function SettingsToggleRow({
+  id,
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-5">
+      <div className="min-w-0 pt-px">
+        <label htmlFor={id} className="cursor-pointer text-[14px] font-semibold text-slate-800 leading-snug">{label}</label>
+        <p className="mt-0.5 text-[13px] leading-snug text-slate-500">{description}</p>
+      </div>
+      <div className="mt-0.5 shrink-0">
+        <SettingsToggle id={id} checked={checked} onChange={onChange} />
+      </div>
+    </div>
+  );
+}
+
+// ── Settings Page ────────────────────────────────────────────────
+
+function SettingsPage({
+  user,
+  onSignOut,
+  onBack,
+  onProfile,
+}: {
+  user: RegisteredUser;
+  onSignOut: () => void;
+  onBack: () => void;
+  onProfile?: () => void;
+}) {
+  const [emailNotif, setEmailNotif]     = useState(true);
+  const [reviewNotif, setReviewNotif]   = useState(true);
+  const [newPackNotif, setNewPackNotif] = useState(false);
+  const [dataConsent, setDataConsent]   = useState(user.consent);
+
+  return (
+    <div className="min-h-screen bg-[#F8F9FB]">
+      {/* Page header */}
+      <div className="border-b border-slate-100 bg-white px-5 py-8">
+        <div className="mx-auto max-w-xl">
+          <button
+            onClick={onBack}
+            className="mb-5 flex items-center gap-1.5 text-[13px] font-medium text-slate-400 transition-colors hover:text-slate-700 focus:outline-none"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Back
+          </button>
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ed3]">Preferences</p>
+          <h1 className="mt-2 text-2xl font-black text-slate-950">Settings</h1>
+          <p className="mt-1 text-[15px] text-slate-500">Manage how Rajo AI works for you.</p>
+        </div>
+      </div>
+
+      <div className="mx-auto max-w-xl space-y-3 px-5 py-8">
+
+        {/* Language & Dialect */}
+        <div className="rounded-2xl border border-slate-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <div className="px-5 pt-5 pb-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Language & Dialect</p>
+          </div>
+          <div className="px-5 pb-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold text-slate-800">Recording dialect</p>
+                <p className="mt-0.5 text-[13px] text-slate-500">
+                  {user.dialect}{user.country ? ` · ${user.country}` : ""}
+                </p>
+              </div>
+              {onProfile && (
+                <button
+                  onClick={onProfile}
+                  className="shrink-0 rounded-lg border border-[#467ed3]/30 px-3 py-1.5 text-[12px] font-semibold text-[#467ed3] transition hover:bg-[#467ed3]/5 focus:outline-none"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[14px] font-semibold text-slate-800">Interface language</p>
+                <p className="mt-0.5 text-[13px] text-slate-500">Use the language selector in the top navigation bar.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Notifications */}
+        <div className="rounded-2xl border border-slate-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <div className="px-5 pt-5 pb-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Notifications</p>
+          </div>
+          <div className="px-5 pb-5 space-y-5">
+            <SettingsToggleRow
+              id="email-updates"
+              label="Contribution updates"
+              description="Get notified when your recordings are approved or flagged."
+              checked={emailNotif}
+              onChange={setEmailNotif}
+            />
+            <SettingsToggleRow
+              id="review-notif"
+              label="Review notifications"
+              description="Know when our team reviews a batch of your contributions."
+              checked={reviewNotif}
+              onChange={setReviewNotif}
+            />
+            <SettingsToggleRow
+              id="new-pack-notif"
+              label="New recording packs"
+              description="Be the first to know when new sentence packs are added for your dialect."
+              checked={newPackNotif}
+              onChange={setNewPackNotif}
+            />
+          </div>
+        </div>
+
+        {/* Privacy & Consent */}
+        <div className="rounded-2xl border border-slate-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <div className="px-5 pt-5 pb-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Privacy & Consent</p>
+          </div>
+          <div className="px-5 pb-5 space-y-4">
+            <SettingsToggleRow
+              id="voice-consent"
+              label="Voice data consent"
+              description="Allow your recordings to be used for training ethical, community-owned Somali AI models."
+              checked={dataConsent}
+              onChange={setDataConsent}
+            />
+            <div className="rounded-xl bg-slate-50 px-4 py-3.5">
+              <p className="text-[13px] leading-relaxed text-slate-500">
+                Your voice data is stored securely and used only to build Somali AI that benefits the community. We never sell or misuse your data.
+              </p>
+              <a
+                href="/about"
+                className="mt-2 inline-flex items-center gap-1 text-[13px] font-semibold text-[#467ed3] hover:underline"
+              >
+                Read privacy details →
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Account */}
+        <div className="rounded-2xl border border-slate-100 bg-white shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <div className="px-5 pt-5 pb-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Account</p>
+          </div>
+          <div className="px-5 pb-5 space-y-1">
+            {/* Signed-in email */}
+            <div className="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200">
+                <User className="h-4 w-4 text-slate-500" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Signed in as</p>
+                <p className="truncate text-[14px] font-semibold text-slate-800">{user.email}</p>
+              </div>
+            </div>
+            {/* Profile link */}
+            {onProfile && (
+              <button
+                onClick={onProfile}
+                className="flex w-full items-center justify-between rounded-xl px-4 py-3 text-[14px] font-semibold text-slate-700 transition hover:bg-slate-50 focus:outline-none"
+              >
+                <div className="flex items-center gap-3">
+                  <User className="h-4 w-4 text-slate-400" />
+                  <span>View &amp; edit profile</span>
+                </div>
+                <ChevronRight className="h-4 w-4 text-slate-300" />
+              </button>
+            )}
+            {/* Sign out */}
+            <button
+              onClick={onSignOut}
+              className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[14px] font-semibold text-red-500 transition hover:bg-red-50 active:bg-red-100 focus:outline-none"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign out of Rajo AI</span>
+            </button>
+          </div>
+        </div>
+
+        <p className="pb-2 text-center text-[12px] text-slate-400">
+          Questions?{" "}
+          <a href="mailto:hello@rajoai.com" className="font-semibold text-[#467ed3] hover:underline">
+            hello@rajoai.com
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Shared form helpers ──────────────────────────────────────────
 
 function TextField({
   label,
@@ -1519,6 +2323,7 @@ function ReadonlyField({ label, value }: { label: string; value: string }) {
 }
 
 function StatusPill({ status }: { status: string }) {
+  const { t } = useLanguage();
   const display = status === "pending_review" ? "pending" : status;
   const color =
     display === "approved"
@@ -1527,7 +2332,7 @@ function StatusPill({ status }: { status: string }) {
         ? "bg-red-50 text-red-700"
         : "bg-amber-50 text-amber-700";
 
-  return <span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${color}`}>{display}</span>;
+  return <span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${color}`}>{t(`status.${display}`)}</span>;
 }
 
 function CenteredMessage({ text }: { text: string }) {
@@ -1573,9 +2378,13 @@ function getMicrophoneErrorMessage(err: unknown): string {
 }
 
 function getInitialView(): View {
-  if (window.location.pathname === "/about") return "about";
-  if (window.location.pathname === "/record") return "record";
-  if (window.location.pathname === "/signin") return "auth";
+  const p = window.location.pathname;
+  if (p === "/about")         return "about";
+  if (p === "/record")        return "record";
+  if (p === "/signin")        return "auth";
+  if (p === "/profile")       return "profile";
+  if (p === "/contributions") return "contributions";
+  if (p === "/settings")      return "settings";
   return "home";
 }
 
@@ -1616,13 +2425,22 @@ function countTodayRecordings(history: RecordingHistoryItem[]): number {
   }).length;
 }
 
-function getContributorRank(total: number): string {
-  if (total >= 51) return "Voice Leader";
-  if (total >= 31) return "Voice Champion";
-  if (total >= 16) return "Voice Pioneer";
-  if (total >= 6) return "Voice Builder";
-  if (total >= 1) return "Voice Starter";
-  return "New Voice";
+function getContributorRank(total: number, t?: (key: string) => string): string {
+  if (total >= 51) return t ? t("rank.leader") : "Voice Leader";
+  if (total >= 31) return t ? t("rank.champion") : "Voice Champion";
+  if (total >= 16) return t ? t("rank.pioneer") : "Voice Pioneer";
+  if (total >= 6) return t ? t("rank.builder") : "Voice Builder";
+  if (total >= 1) return t ? t("rank.starter") : "Voice Starter";
+  return t ? t("rank.new") : "New Voice";
+}
+
+function translatePackTitle(title: string, t: (key: string) => string): string {
+  const normalized = title.trim().toLowerCase();
+  if (normalized === "everyday somali") return t("pack.everydaySomali");
+  if (normalized === "starter somali" || normalized === "starter") return t("pack.starter");
+  if (normalized === "somali culture" || normalized === "culture") return t("pack.culture");
+  if (normalized === "speech practice" || normalized === "speech") return t("pack.speech");
+  return title;
 }
 
 
