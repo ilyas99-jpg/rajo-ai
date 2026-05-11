@@ -91,3 +91,88 @@ button {
     @apply bg-white text-rajo-primary shadow-sm;
   }
 }
+
+.rajo-loader-logo-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: rajo-logo-pulse 2.8s ease-in-out infinite;
+}
+
+.rajo-loader-logo-wrap::before {
+  content: "";
+  position: absolute;
+  inset: -18px -28px;
+  z-index: -1;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 45%, rgba(70, 126, 211, 0.18), transparent 62%),
+    radial-gradient(circle at 70% 55%, rgba(36, 88, 168, 0.12), transparent 58%);
+  filter: blur(10px);
+  opacity: 0.9;
+  animation: rajo-halo-fade 3.2s ease-in-out infinite;
+}
+
+.rajo-loader-wave {
+  display: flex;
+  height: 88px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.rajo-loader-wave span {
+  display: block;
+  width: 4px;
+  min-height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #74a5ec 0%, #467ed3 52%, #2458a8 100%);
+  box-shadow: 0 10px 24px rgba(70, 126, 211, 0.14);
+  transform-origin: center;
+  animation: rajo-wave 1.55s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes rajo-logo-pulse {
+  0%,
+  100% {
+    opacity: 0.86;
+    transform: translateY(0) scale(0.985);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1);
+  }
+}
+
+@keyframes rajo-halo-fade {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes rajo-wave {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: scaleY(0.38);
+  }
+  45% {
+    opacity: 0.82;
+    transform: scaleY(0.88);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rajo-loader-logo-wrap,
+  .rajo-loader-logo-wrap::before,
+  .rajo-loader-wave span {
+    animation: none;
+  }
+}

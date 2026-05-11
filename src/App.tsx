@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { Award, BarChart2, Bell, CheckCircle2, ChevronLeft, ChevronRight, Clock, Flame, Globe, Lock, LogOut, Mic, RotateCcw, Shield, Star, Trophy, Upload, User, XCircle } from "lucide-react";
+import { Award, BarChart2, Bell, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flame, Globe, Lock, LogOut, Mic, RotateCcw, Shield, Star, Trophy, Upload, User, XCircle } from "lucide-react";
 import { Navbar } from "./components/Navbar";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { BrandWaveform } from "./components/Brand";
@@ -324,11 +324,26 @@ function VoiceCollectionApp() {
         user={user}
         avatarUrl={avatarUrl}
         onHome={() => navigate("home", "/")}
-        onAbout={() => navigate("about", "/about")}
+        onAbout={() => {
+          navigate("about", "/about");
+          window.scrollTo({ top: 0 });
+        }}
         onHowItWorks={() => {
           navigate("home", "/");
           requestAnimationFrame(() => {
             document.getElementById("how-it-works")?.scrollIntoView({ behavior: "smooth" });
+          });
+        }}
+        onDataset={() => {
+          navigate("home", "/");
+          requestAnimationFrame(() => {
+            document.getElementById("dataset")?.scrollIntoView({ behavior: "smooth" });
+          });
+        }}
+        onFaq={() => {
+          navigate("home", "/");
+          requestAnimationFrame(() => {
+            document.getElementById("faq")?.scrollIntoView({ behavior: "smooth" });
           });
         }}
         onSignIn={() => startFromHome("login")}
@@ -340,7 +355,7 @@ function VoiceCollectionApp() {
 
       <main>
         {authLoading ? (
-          <CenteredMessage text={t("common.loading")} />
+          <LoadingScreen />
         ) : view === "home" ? (
           <HomePage onAbout={() => navigate("about", "/about")} onStart={() => startFromHome("register", "record")} />
         ) : view === "about" ? (
@@ -547,28 +562,7 @@ function AboutPage({ onStart }: { onStart: () => void }) {
         </div>
       </section>
 
-      {/* SECTION 6: CONTACT */}
-      <section className="border-t border-slate-100 bg-white px-5 py-16 sm:py-20">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("about.contact.label")}</p>
-          <h2 className="mt-4 text-3xl font-black text-slate-950 sm:text-4xl">{t("about.contact.title")}</h2>
-          <p className="mt-4 text-slate-500">{t("about.contact.text")}</p>
-          <a
-            className="mt-8 inline-block rounded-xl bg-[#467ED3] px-8 py-3.5 text-base font-black text-white shadow-sm transition hover:bg-[#3a6ec0]"
-            href="mailto:hello@rajoai.com"
-          >
-            hello@rajoai.com
-          </a>
-          <div className="mt-14 border-t border-slate-100 pt-10">
-            <button className="btn-primary px-8 py-3 text-base" onClick={onStart}>
-              {t("about.start")}
-            </button>
-            <p className="mt-4 text-sm italic text-[#467ED3]">
-              {t("about.start.note")}
-            </p>
-          </div>
-        </div>
-      </section>
+      <SiteFooter />
 
     </div>
   );
@@ -592,13 +586,14 @@ function HomePage({ onAbout, onStart }: { onAbout: () => void; onStart: () => vo
       <DatasetStatsSection />
       <HowItWorksSection />
       <TrustSection />
-      <CtaSection onStart={onStart} />
+      <FaqSection />
       <SiteFooter />
     </div>
   );
 }
 
 function HeroSection({ onAbout, onStart }: { onAbout: () => void; onStart: () => void }) {
+  const { t } = useLanguage();
   return (
     <section className="bg-white px-5 py-16 sm:py-20 lg:py-24">
       <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2 lg:gap-16">
@@ -606,15 +601,15 @@ function HeroSection({ onAbout, onStart }: { onAbout: () => void; onStart: () =>
         {/* Left — text */}
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-[#467ED3]">
-            Built for Somali voices
+            {t("home.hero.eyebrow")}
           </p>
           <h1 className="mt-5 text-[2.4rem] font-black leading-[1.06] tracking-tight text-slate-950 sm:text-5xl">
-           Preserve Somali voices for the future
+            {t("home.hero.title")}
           </h1>
           <p className="mt-5 max-w-md text-lg leading-8 text-slate-500">
-            Record a few Somali sentences and help build speech technology that understands Somali accents and dialects
+            {t("home.hero.body")}
           </p>
-           <p  className="mt-10  text-sm italic text-slate-400">Your contributions will be used to train AI models that better understand and generate Somali speech.</p>
+           <p  className="mt-10  text-sm italic text-slate-400">{t("home.hero.note")}</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <button className="btn-primary px-7 py-3 text-base" onClick={onStart}>
               Start Recording
@@ -634,13 +629,12 @@ function HeroSection({ onAbout, onStart }: { onAbout: () => void; onStart: () =>
             <img
               alt="Aerial view of a Somali coastal town — colourful buildings, white sand beach, and turquoise sea"
               className="h-64 w-full object-cover sm:h-80 lg:h-[460px]"
-              src="/somalia-coast.jpg"
+              src="/somalia-coast.png"
               style={{ filter: "saturate(0.82) brightness(0.97)", objectPosition: "center 42%" }}
             />
           </div>
           <figcaption className="mt-2.5 text-right text-xs text-slate-400">
-            Murcanyo, Bari, Somalia. 
-            Photo: Marwan Somali
+            
           </figcaption>
         </figure>
 
@@ -651,7 +645,7 @@ function HeroSection({ onAbout, onStart }: { onAbout: () => void; onStart: () =>
 
 function HowItWorksSection() {
   return (
-    <section id="how-it-works" className="bg-white px-5 py-16 sm:py-20">
+    <section id="how-it-works" className="scroll-mt-24 bg-white px-5 py-16 sm:py-20">
       <div className="mx-auto max-w-5xl">
         <div className="mb-10 text-center">
           <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">How it works</p>
@@ -730,6 +724,56 @@ function TrustSection() {
   );
 }
 
+function FaqSection() {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const { t } = useLanguage();
+
+  const items = [
+    { q: t("faq.q1"), a: t("faq.a1") },
+    { q: t("faq.q2"), a: t("faq.a2") },
+    { q: t("faq.q3"), a: t("faq.a3") },
+    { q: t("faq.q4"), a: t("faq.a4") },
+    { q: t("faq.q5"), a: t("faq.a5") },
+    { q: t("faq.q6"), a: t("faq.a6") },
+    { q: t("faq.q7"), a: t("faq.a7") },
+  ];
+
+  return (
+    <section id="faq" className="scroll-mt-24 bg-white px-5 py-16 sm:py-20">
+      <div className="mx-auto max-w-2xl">
+        <div className="mb-10 text-center">
+          <p className="text-[11px] font-black uppercase tracking-widest text-[#467ED3]">{t("faq.eyebrow")}</p>
+          <h2 className="mt-2 text-3xl font-black text-slate-950 sm:text-4xl">{t("faq.title")}</h2>
+        </div>
+
+        <div className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-[#FAFBFD]">
+          {items.map((item, i) => {
+            const isOpen = openIndex === i;
+            return (
+              <div key={i}>
+                <button
+                  onClick={() => setOpenIndex(isOpen ? null : i)}
+                  aria-expanded={isOpen}
+                  className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left focus:outline-none"
+                >
+                  <span className="text-[15px] font-black text-slate-950">{item.q}</span>
+                  <ChevronDown
+                    aria-hidden="true"
+                    className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {isOpen && (
+                  <p className="px-6 pb-5 text-sm leading-7 text-slate-500">{item.a}</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CtaSection({ onStart }: { onStart: () => void }) {
   return (
     <section className="bg-[#467ED3] px-5 py-20">
@@ -795,7 +839,7 @@ function DatasetStatsSection() {
     : (Array.from({ length: 4 }, () => null) as null[]);
 
   return (
-    <section className="border-y border-slate-100 bg-[#F7FAFF] px-5 py-12">
+    <section id="dataset" className="scroll-mt-24 border-y border-slate-100 bg-[#F7FAFF] px-5 py-12">
       <div className="mx-auto max-w-4xl">
         <div className="grid grid-cols-2 gap-y-8 sm:grid-cols-4">
           {items.map((item, i) =>
@@ -2333,6 +2377,40 @@ function StatusPill({ status }: { status: string }) {
         : "bg-amber-50 text-amber-700";
 
   return <span className={`rounded-full px-3 py-1 text-xs font-black uppercase ${color}`}>{t(`status.${display}`)}</span>;
+}
+
+function LoadingScreen() {
+  const bars = [22, 38, 56, 32, 70, 44, 84, 50, 68, 34, 58, 26];
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-[calc(100vh-68px)] items-center justify-center bg-white px-6"
+    >
+      <span className="sr-only">Loading Rajo AI</span>
+      <div className="flex w-full max-w-xs flex-col items-center">
+        <div className="rajo-loader-logo-wrap">
+          <img
+            alt="Rajo AI"
+            className="h-16 w-auto object-contain sm:h-[76px]"
+            src="/logo%20rajo%20ai.png"
+          />
+        </div>
+        <div className="rajo-loader-wave mt-8" aria-hidden="true">
+          {bars.map((height, index) => (
+            <span
+              key={index}
+              style={{
+                height: `${height}px`,
+                animationDelay: `${index * 90}ms`,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function CenteredMessage({ text }: { text: string }) {

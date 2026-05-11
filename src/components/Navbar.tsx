@@ -21,6 +21,8 @@ export interface NavbarProps {
   onHome: () => void;
   onAbout: () => void;
   onHowItWorks: () => void;
+  onDataset: () => void;
+  onFaq: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
   onProfile: () => void;
@@ -64,6 +66,8 @@ export function Navbar({
   onHome,
   onAbout,
   onHowItWorks,
+  onDataset,
+  onFaq,
   onSignIn,
   onSignOut,
   onProfile,
@@ -128,6 +132,8 @@ export function Navbar({
     { label: t("nav.home"),       view: "home"  as View, action: onHome },
     { label: t("nav.about"),      view: "about" as View, action: onAbout },
     { label: t("nav.howItWorks"), view: null,             action: onHowItWorks },
+    { label: t("nav.dataset"),    view: null,             action: onDataset },
+    { label: t("nav.faq"),        view: null,             action: onFaq },
   ];
 
   const userInitial = user?.fullName?.[0]?.toUpperCase() ?? "U";
@@ -149,14 +155,15 @@ export function Navbar({
       }`}
     >
       {/* ── Main bar ────────────────────────────────────────────────── */}
-      {/* Mobile: flex + justify-between  |  Desktop: 3-col grid */}
-      <div className="mx-auto flex h-full max-w-6xl items-center justify-between px-4 sm:px-5 md:grid md:grid-cols-[1fr_auto_1fr] lg:px-6">
+      {/* flex-1 trick: left flex-1 | center auto | right flex-1 justify-end */}
+      <div className="mx-auto flex h-full max-w-6xl items-center px-4 sm:px-5 lg:px-8">
 
-        {/* Left: logo */}
+        {/* Left: logo — flex-1 keeps it anchored left */}
+        <div className="flex flex-1 items-center">
         <button
           onClick={onHome}
           aria-label="Rajo AI – go to home"
-          className="flex shrink-0 items-center justify-self-start border-0 bg-transparent p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#467ed3]/30 focus-visible:rounded-md"
+          className="flex shrink-0 items-center border-0 bg-transparent p-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#467ed3]/30 focus-visible:rounded-md"
         >
           <img
             src="/logo%20rajo%20ai.png"
@@ -173,9 +180,10 @@ export function Navbar({
             RAJO<span style={{ color: "#467ed3" }}>AI</span>
           </span>
         </button>
+        </div>
 
         {/* Center: nav links (desktop) */}
-        <nav aria-label="Main navigation" className="hidden items-center gap-7 md:flex">
+        <nav aria-label="Main navigation" className="hidden items-center gap-8 md:flex">
           {navLinks.map(({ label, view, action }) => {
             const isActive = view !== null && activeView === view;
             return (
@@ -183,14 +191,14 @@ export function Navbar({
                 key={label}
                 onClick={action}
                 aria-current={isActive ? "page" : undefined}
-                style={{ color: isActive ? "#467ed3" : "#374151" }}
-                className="group relative pb-[3px] text-[14.5px] font-medium tracking-[-0.01em] transition-colors duration-200 ease-out hover:text-[#467ed3] focus:outline-none"
+                style={{ color: isActive ? "#467ed3" : "#4B5563" }}
+                className="group relative pb-[3px] text-[14px] font-medium tracking-wide transition-colors duration-200 ease-out hover:text-[#467ed3] focus:outline-none"
               >
                 {label}
                 <span
                   aria-hidden="true"
                   style={{ backgroundColor: "#467ed3" }}
-                  className={`absolute bottom-0 left-0 h-[1.5px] rounded-full transition-all duration-200 ease-out ${
+                  className={`absolute bottom-0 left-0 h-[2px] rounded-full transition-all duration-200 ease-out ${
                     isActive ? "w-full" : "w-0 group-hover:w-full"
                   }`}
                 />
@@ -199,8 +207,8 @@ export function Navbar({
           })}
         </nav>
 
-        {/* Right: language + auth controls */}
-        <div className="flex items-center justify-end gap-2">
+        {/* Right: language + auth controls — flex-1 + justify-end pushes to far right */}
+        <div className="flex flex-1 items-center justify-end gap-1">
 
           {/* Language switcher (desktop) */}
           <div className="relative hidden md:block" ref={langRef}>
@@ -209,13 +217,13 @@ export function Navbar({
               aria-haspopup="listbox"
               aria-expanded={langDropdownOpen}
               aria-label={`${t("nav.language")}: ${language === "en" ? "English" : "Af-Soomaali"}`}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[13.5px] font-medium text-[#374151] transition-colors duration-200 hover:bg-gray-50 hover:text-[#467ed3] focus:outline-none"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-[13px] font-medium text-[#4B5563] transition-all duration-200 hover:bg-[#F3F6FB] hover:text-[#467ed3] focus:outline-none"
             >
               <Globe className="h-[14px] w-[14px]" aria-hidden="true" />
               <span>{languageCode}</span>
               <ChevronDown
                 aria-hidden="true"
-                className={`h-[12px] w-[12px] transition-transform duration-200 ${langDropdownOpen ? "rotate-180" : ""}`}
+                className={`h-[11px] w-[11px] transition-transform duration-200 ${langDropdownOpen ? "rotate-180" : ""}`}
               />
             </button>
 
@@ -254,6 +262,9 @@ export function Navbar({
             )}
           </div>
 
+          {/* Divider */}
+          <div className="mx-2 hidden h-5 w-px bg-gray-200 md:block" aria-hidden="true" />
+
           {/* User avatar (desktop) or Sign In */}
           {user ? (
             <div className="relative hidden md:block" ref={userRef}>
@@ -262,15 +273,15 @@ export function Navbar({
                 aria-haspopup="menu"
                 aria-expanded={userDropdownOpen}
                 aria-label={`Account menu for ${user.fullName}`}
-                className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all duration-200 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#467ed3]/30"
+                className="flex items-center gap-2 rounded-lg px-2.5 py-1.5 transition-all duration-200 hover:bg-[#F3F6FB] focus:outline-none focus:ring-2 focus:ring-[#467ed3]/30"
               >
                 <AvatarBubble avatarUrl={resolvedAvatar} initial={userInitial} size="md" />
-                <span className="max-w-[72px] truncate text-[13.5px] font-medium text-[#374151]">
+                <span className="max-w-[72px] truncate text-[13px] font-medium text-[#374151]">
                   {firstName}
                 </span>
                 <ChevronDown
                   aria-hidden="true"
-                  className={`h-[12px] w-[12px] text-gray-400 transition-transform duration-200 ${userDropdownOpen ? "rotate-180" : ""}`}
+                  className={`h-[11px] w-[11px] text-gray-400 transition-transform duration-200 ${userDropdownOpen ? "rotate-180" : ""}`}
                 />
               </button>
 
@@ -320,7 +331,7 @@ export function Navbar({
           ) : (
             <button
               onClick={onSignIn}
-              className="hidden rounded-lg border border-[#E5E7EB] px-4 py-2 text-[13.5px] font-medium text-[#374151] transition-all duration-200 hover:border-[#467ed3] hover:text-[#467ed3] focus:outline-none focus:ring-2 focus:ring-[#467ed3]/30 md:block"
+              className="hidden rounded-lg border border-[#D1D5DB] bg-white px-4 py-[7px] text-[13px] font-medium text-[#374151] shadow-sm transition-all duration-200 hover:border-[#467ed3] hover:text-[#467ed3] hover:shadow-none focus:outline-none focus:ring-2 focus:ring-[#467ed3]/30 md:block"
             >
               {t("nav.signIn")}
             </button>
