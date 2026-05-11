@@ -637,7 +637,7 @@ function HeroSection({ onAbout, onStart }: { onAbout: () => void; onStart: () =>
             
           </figcaption>
         </figure>
-
+n
       </div>
     </section>
   );

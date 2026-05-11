@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
   createPrompt,
@@ -39,6 +39,18 @@ type DonorRecordingGroup = {
   approvedCount: number;
   rejectedCount: number;
   latestRecordingAt: string;
+};
+
+type BreakdownItem = {
+  label: string;
+  count: number;
+};
+
+type StatItem = {
+  label: string;
+  value: string;
+  icon: string;
+  breakdown?: BreakdownItem[];
 };
 
 export function AdminDashboard() {
@@ -382,7 +394,7 @@ export function AdminDashboard() {
               <h1 className="text-2xl font-black text-slate-950">Voice Dataset Dashboard</h1>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
             <button className="admin-action admin-action-secondary" disabled={isLoading} onClick={() => void loadDashboard()}>
               {isLoading ? "Refreshing..." : "Refresh Data"}
             </button>
@@ -399,7 +411,7 @@ export function AdminDashboard() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl space-y-4 px-4 py-4 lg:px-6">
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 lg:px-6 lg:py-8">
         {error && (
           <div className="rounded-2xl border border-red-100 bg-red-50 p-3 text-sm font-bold text-red-700">
             {error}
@@ -497,25 +509,27 @@ export function AdminDashboard() {
             setPromptBusy(true);
             setPromptError("");
             try {
-              await uploadPromptsCsv(packId, csv);
+              const importedCount = await uploadPromptsCsv(packId, csv);
               await loadPromptManager();
+              return importedCount;
             } catch (err) {
               setPromptError(err instanceof Error ? err.message : "Could not upload CSV.");
+              throw err;
             } finally {
               setPromptBusy(false);
             }
           }}
         />
 
-        <section className="rounded-3xl border border-blue-100 bg-white p-4 shadow-soft">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <section className="rounded-3xl border border-blue-100 bg-white p-5 shadow-soft sm:p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-wide text-blue-700">Recordings Review</p>
-              <h2 className="mt-1 text-xl font-black text-slate-950">
+              <p className="text-[11px] font-black uppercase tracking-wide text-blue-700">Recordings Review</p>
+              <h2 className="mt-1.5 text-xl font-black leading-tight text-slate-950">
                 {donorGroups.length} donors, {filteredRecordings.length} recordings
               </h2>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2 lg:w-[720px] lg:grid-cols-4">
+            <div className="grid gap-2.5 sm:grid-cols-2 lg:w-[720px] lg:grid-cols-4">
               <input
                 className="admin-field"
                 placeholder="Search donor, email, or sentence"
@@ -533,7 +547,7 @@ export function AdminDashboard() {
             </div>
           </div>
 
-          <div className="mt-4 space-y-4">
+          <div className="mt-6 space-y-4">
             {donorGroups.map((group) => (
               <DonorRecordingsCard
                 group={group}
@@ -621,12 +635,12 @@ function DonorRecordingsCard({
   onToggle: () => void;
 }) {
   return (
-    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <header className="flex flex-col gap-3 border-b border-slate-100 pb-3 lg:flex-row lg:items-start lg:justify-between">
+    <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+      <header className="flex flex-col gap-4 border-b border-slate-100 pb-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h3 className="text-lg font-black text-slate-950">{group.name}</h3>
           <p className="text-sm font-semibold text-slate-500">{group.email || "No email"}</p>
-          <div className="mt-2 flex flex-wrap gap-2 text-xs">
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <MetaPill label="Gender" value={group.gender} />
             <MetaPill label="Age" value={group.ageRange} />
             <MetaPill label="Dialect" value={group.dialect} />
@@ -643,12 +657,12 @@ function DonorRecordingsCard({
         </div>
       </header>
 
-      <button className="btn-secondary mt-3 min-h-10 rounded-xl px-4 py-2 text-xs" onClick={onToggle}>
+      <button className="btn-secondary mt-4 min-h-10 rounded-xl px-4 py-2 text-xs" onClick={onToggle}>
         {expanded ? "Hide recordings" : "View recordings"}
       </button>
 
       {expanded && (
-        <div className="mt-3 space-y-3">
+        <div className="mt-4 space-y-3">
           {group.recordings.map((recording) => (
             <RecordingRow
               key={recording.id}
@@ -796,7 +810,7 @@ function PromptManager({
     promptId: string,
     changes: { text: string; category: string; difficulty: string; orderNumber: number },
   ) => Promise<void>;
-  onUploadCsv: (packId: string, csv: string) => Promise<void>;
+  onUploadCsv: (packId: string, csv: string) => Promise<number>;
 }) {
   const [packForm, setPackForm] = useState({
     slug: "",
@@ -815,20 +829,34 @@ function PromptManager({
     orderNumber: 1,
   });
   const [csvText, setCsvText] = useState("");
+  const [selectedCsvFileName, setSelectedCsvFileName] = useState("");
+  const [importSuccess, setImportSuccess] = useState("");
+  const [importError, setImportError] = useState("");
+  const csvFileInputRef = useRef<HTMLInputElement | null>(null);
+  const promptListRef = useRef<HTMLDivElement | null>(null);
 
   const selectedPack = packs.find((pack) => pack.id === selectedPackId) ?? packs[0];
   const activeCount = (pack: AdminPromptPack) => pack.prompts.filter((prompt) => prompt.is_active).length;
+  const csvRowCount = useMemo(() => countPromptCsvRows(csvText), [csvText]);
 
   useEffect(() => {
     if (!selectedPackId && packs[0]) setSelectedPackId(packs[0].id);
   }, [packs, selectedPackId]);
 
+  useEffect(() => {
+    setCsvText("");
+    setSelectedCsvFileName("");
+    setImportSuccess("");
+    setImportError("");
+    if (csvFileInputRef.current) csvFileInputRef.current.value = "";
+  }, [selectedPack?.id]);
+
   return (
-    <section className="rounded-3xl border border-blue-100 bg-white p-4 shadow-soft">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded-3xl border border-blue-100 bg-white p-5 shadow-soft sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-wide text-blue-700">Prompt Manager</p>
-          <h2 className="mt-1 text-xl font-black text-slate-950">Prompt packs and recording prompts</h2>
+          <p className="text-[11px] font-black uppercase tracking-wide text-blue-700">Prompt Manager</p>
+          <h2 className="mt-1.5 text-xl font-black leading-tight text-slate-950">Prompt packs and recording prompts</h2>
           <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
             Manage RAJO AI prompt sets from Supabase. Contributors only receive active prompts from unlocked packs.
           </p>
@@ -840,9 +868,9 @@ function PromptManager({
 
       {error && <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-bold text-red-700">{error}</p>}
 
-      <div className="mt-4 grid gap-4 xl:grid-cols-[360px_1fr]">
+      <div className="mt-6 grid gap-5 xl:grid-cols-[360px_1fr]">
         <form
-          className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+          className="rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:p-5"
           onSubmit={(event) => {
             event.preventDefault();
             void onCreatePack(packForm).then(() =>
@@ -859,7 +887,7 @@ function PromptManager({
           }}
         >
           <h3 className="font-black text-slate-950">Create prompt pack</h3>
-          <div className="mt-3 space-y-2">
+          <div className="mt-4 space-y-2.5">
             <input className="admin-field" placeholder="slug" required value={packForm.slug} onChange={(e) => setPackForm({ ...packForm, slug: e.target.value })} />
             <input className="admin-field" placeholder="Title" required value={packForm.title} onChange={(e) => setPackForm({ ...packForm, title: e.target.value })} />
             <textarea className="admin-field min-h-20" placeholder="Description" value={packForm.description} onChange={(e) => setPackForm({ ...packForm, description: e.target.value })} />
@@ -883,11 +911,11 @@ function PromptManager({
           </div>
         </form>
 
-        <div className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-3">
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
             {packs.map((pack) => (
               <button
-                className={`rounded-2xl border p-4 text-left transition ${
+                className={`min-h-32 rounded-2xl border p-4 text-left transition ${
                   selectedPack?.id === pack.id ? "border-blue-300 bg-blue-50" : "border-slate-100 bg-white hover:bg-slate-50"
                 }`}
                 key={pack.id}
@@ -910,7 +938,7 @@ function PromptManager({
           </div>
 
           {selectedPack && (
-            <div className="rounded-2xl border border-slate-100 p-4">
+            <div className="rounded-2xl border border-slate-100 p-4 sm:p-5">
               <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-lg font-black text-slate-950">{selectedPack.title}</h3>
@@ -922,51 +950,117 @@ function PromptManager({
                 </button>
               </div>
 
-              <form
-                className="mt-4 grid gap-2 lg:grid-cols-[1fr_130px_130px_100px_auto]"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void onCreatePrompt({ packId: selectedPack.id, ...promptForm }).then(() =>
-                    setPromptForm({ text: "", category: "", difficulty: "", orderNumber: selectedPack.prompts.length + 2 }),
-                  );
-                }}
-              >
-                <input className="admin-field" placeholder="Prompt text" required value={promptForm.text} onChange={(e) => setPromptForm({ ...promptForm, text: e.target.value })} />
-                <input className="admin-field" placeholder="Category" value={promptForm.category} onChange={(e) => setPromptForm({ ...promptForm, category: e.target.value })} />
-                <input className="admin-field" placeholder="Difficulty" value={promptForm.difficulty} onChange={(e) => setPromptForm({ ...promptForm, difficulty: e.target.value })} />
-                <input className="admin-field" min={1} type="number" value={promptForm.orderNumber} onChange={(e) => setPromptForm({ ...promptForm, orderNumber: Number(e.target.value) })} />
-                <button className="admin-action admin-action-primary" disabled={busy} type="submit">Add</button>
-              </form>
-
-              <div className="mt-4 rounded-2xl bg-slate-50 p-3">
-                <textarea
-                  className="admin-field min-h-24"
-                  placeholder="CSV: text,category,difficulty,order_number"
-                  value={csvText}
-                  onChange={(event) => setCsvText(event.target.value)}
-                />
-                <input
-                  accept=".csv,text/csv"
-                  className="mt-2 block w-full text-sm font-bold text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-black file:text-blue-700"
-                  type="file"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (!file) return;
-                    void file.text().then(setCsvText);
-                    event.target.value = "";
+              <div className="mt-5 grid gap-4">
+                <form
+                  className="rounded-2xl border border-slate-100 bg-white p-4"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void onCreatePrompt({ packId: selectedPack.id, ...promptForm }).then(() =>
+                      setPromptForm({ text: "", category: "", difficulty: "", orderNumber: selectedPack.prompts.length + 2 }),
+                    );
                   }}
-                />
-                <button
-                  className="admin-action admin-action-secondary mt-2"
-                  disabled={busy || !csvText.trim()}
-                  onClick={() => void onUploadCsv(selectedPack.id, csvText).then(() => setCsvText(""))}
-                  type="button"
                 >
-                  Upload CSV
-                </button>
+                  <div className="flex flex-col gap-1">
+                    <h4 className="text-sm font-black text-slate-950">Add single prompt</h4>
+                    <p className="text-xs font-semibold text-slate-500">Create one prompt manually for this pack.</p>
+                  </div>
+                  <div className="mt-3 grid gap-2 lg:grid-cols-[1fr_130px_130px_100px_auto]">
+                    <input className="admin-field" placeholder="Prompt text" required value={promptForm.text} onChange={(e) => setPromptForm({ ...promptForm, text: e.target.value })} />
+                    <input className="admin-field" placeholder="Category" value={promptForm.category} onChange={(e) => setPromptForm({ ...promptForm, category: e.target.value })} />
+                    <input className="admin-field" placeholder="Difficulty" value={promptForm.difficulty} onChange={(e) => setPromptForm({ ...promptForm, difficulty: e.target.value })} />
+                    <input className="admin-field" min={1} type="number" value={promptForm.orderNumber} onChange={(e) => setPromptForm({ ...promptForm, orderNumber: Number(e.target.value) })} />
+                    <button className="admin-action admin-action-primary" disabled={busy} type="submit">Add</button>
+                  </div>
+                </form>
+
+                <div className="rounded-2xl border border-blue-100 bg-slate-50 p-4">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-950">Import CSV</h4>
+                      <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                        Review the file details, then save to import prompts into this pack.
+                      </p>
+                    </div>
+                    <span className="mt-2 inline-flex w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 sm:mt-0">
+                      {csvRowCount} row{csvRowCount === 1 ? "" : "s"} detected
+                    </span>
+                  </div>
+
+                  {importSuccess && (
+                    <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700">
+                      {importSuccess}
+                    </p>
+                  )}
+                  {importError && (
+                    <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm font-bold text-red-700">
+                      {importError}
+                    </p>
+                  )}
+
+                  <textarea
+                    className="admin-field mt-3 min-h-28"
+                    placeholder="CSV: text,category,difficulty,order_number"
+                    value={csvText}
+                    onChange={(event) => {
+                      setCsvText(event.target.value);
+                      setImportSuccess("");
+                      setImportError("");
+                    }}
+                  />
+                  <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <input
+                        accept=".csv,text/csv"
+                        className="block w-full text-sm font-bold text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-black file:text-blue-700"
+                        ref={csvFileInputRef}
+                        type="file"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          setImportSuccess("");
+                          setImportError("");
+                          if (!file) {
+                            setSelectedCsvFileName("");
+                            return;
+                          }
+                          setSelectedCsvFileName(file.name);
+                          void file.text().then(setCsvText).catch(() => {
+                            setImportError("Could not read the selected CSV file.");
+                          });
+                        }}
+                      />
+                      <p className="mt-2 truncate text-xs font-bold text-slate-500">
+                        {selectedCsvFileName ? `Selected file: ${selectedCsvFileName}` : "No CSV file selected."}
+                      </p>
+                    </div>
+                    <button
+                      className="admin-action admin-action-primary shrink-0"
+                      disabled={busy || csvRowCount === 0}
+                      onClick={() => {
+                        setImportSuccess("");
+                        setImportError("");
+                        void onUploadCsv(selectedPack.id, csvText)
+                          .then(() => {
+                            setImportSuccess("Prompts imported successfully");
+                            setCsvText("");
+                            setSelectedCsvFileName("");
+                            if (csvFileInputRef.current) csvFileInputRef.current.value = "";
+                            window.setTimeout(() => {
+                              promptListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }, 0);
+                          })
+                          .catch((err) => {
+                            setImportError(err instanceof Error ? err.message : "Could not import prompts.");
+                          });
+                      }}
+                      type="button"
+                    >
+                      {busy ? "Importing..." : "Save / Import Prompts"}
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div className="mt-4 space-y-2">
+              <div className="mt-5 space-y-2" ref={promptListRef}>
                 {selectedPack.prompts.map((prompt) => (
                   <PromptEditor
                     busy={busy}
@@ -1085,28 +1179,42 @@ function StatsGrid({
   const rejected = recordings.filter((recording) => recording.status === "rejected").length;
   const pending = recordings.filter((recording) => normalizeStatus(recording.status) === "pending").length;
 
-  const stats = [
+  const stats: StatItem[] = [
     { label: "Donors", value: donors.length.toString(), icon: "D" },
     { label: "Recordings", value: recordings.length.toString(), icon: "R" },
     { label: "Duration", value: formatDuration(totalDurationSeconds), icon: "T" },
     { label: "Pending", value: pending.toString(), icon: "P" },
     { label: "Approved", value: approved.toString(), icon: "A" },
     { label: "Rejected", value: rejected.toString(), icon: "X" },
-    { label: "Gender", value: formatBreakdown(countBy(donors, "gender")), icon: "G" },
-    { label: "Dialects", value: formatBreakdown(countBy(donors, "dialect")), icon: "L" },
+    {
+      label: "Gender",
+      value: formatBreakdown(countBy(donors, "gender")),
+      icon: "G",
+      breakdown: getBreakdownItems(countBy(donors, "gender")),
+    },
+    {
+      label: "Dialects",
+      value: formatBreakdown(countBy(donors, "dialect")),
+      icon: "L",
+      breakdown: getBreakdownItems(countBy(donors, "dialect")),
+    },
   ];
 
   return (
-    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <section className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
-        <article className="rounded-2xl border border-blue-100 bg-white p-3 shadow-soft" key={stat.label}>
-          <div className="flex items-start gap-3">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xs font-black text-blue-700">
+        <article className="flex h-36 overflow-hidden rounded-2xl border border-blue-100 bg-white p-4 shadow-soft" key={stat.label}>
+          <div className="flex w-full items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-xs font-black text-blue-700">
               {stat.icon}
             </span>
-            <div className="min-w-0">
+            <div className="flex min-w-0 flex-1 flex-col">
               <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">{stat.label}</p>
-              <p className="mt-1 break-words text-xl font-black leading-tight text-slate-950">{stat.value}</p>
+              {stat.breakdown ? (
+                <StatBreakdown items={stat.breakdown} />
+              ) : (
+                <p className="mt-2 break-words text-2xl font-black leading-none text-slate-950">{stat.value}</p>
+              )}
             </div>
           </div>
         </article>
@@ -1123,17 +1231,17 @@ function ProgressCard({
   totalHours: number;
 }) {
   return (
-    <section className="rounded-3xl border border-blue-100 bg-white px-4 py-3 shadow-soft">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <section className="rounded-3xl border border-blue-100 bg-white p-5 shadow-soft sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-wide text-blue-700">Dataset Progress</p>
-          <p className="mt-1 text-lg font-black text-slate-950">
+          <p className="text-[11px] font-black uppercase tracking-wide text-blue-700">Dataset Progress</p>
+          <p className="mt-1.5 text-lg font-black leading-tight text-slate-950">
             {formatHours(totalHours)} / {DATASET_GOAL_HOURS} hours collected
           </p>
         </div>
         <p className="text-sm font-black text-slate-500">{progressPercent.toFixed(1)}%</p>
       </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-50">
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-blue-50">
         <div className="h-full rounded-full bg-blue-600" style={{ width: `${progressPercent}%` }} />
       </div>
     </section>
@@ -1158,6 +1266,26 @@ function FilterSelect({
         <option key={option} value={option}>{option}</option>
       ))}
     </select>
+  );
+}
+
+function StatBreakdown({ items }: { items: BreakdownItem[] }) {
+  if (items.length === 0) {
+    return <p className="mt-2 text-lg font-black leading-tight text-slate-950">None</p>;
+  }
+
+  return (
+    <ul className="mt-3 grid max-h-20 gap-1.5 overflow-y-auto pr-1">
+      {items.map((item) => (
+        <li
+          className="flex min-w-0 items-center justify-between gap-2 rounded-lg bg-blue-50 px-2.5 py-1.5"
+          key={item.label}
+        >
+          <span className="min-w-0 truncate text-xs font-black text-blue-700">{item.label}</span>
+          <span className="shrink-0 text-xs font-black text-slate-950">{item.count}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -1208,12 +1336,12 @@ function ExportCard({
   onToggleSignedUrls: (value: boolean) => void;
 }) {
   return (
-    <section className="rounded-3xl border border-blue-100 bg-white px-4 py-3 shadow-soft">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <section className="rounded-3xl border border-blue-100 bg-white p-5 shadow-soft sm:p-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-black uppercase tracking-wide text-blue-700">Dataset Export</p>
-          <p className="mt-1 text-base font-black text-slate-950">Export approved recordings as CSV</p>
-          <p className="mt-0.5 text-xs font-semibold text-slate-500">
+          <p className="text-[11px] font-black uppercase tracking-wide text-blue-700">Dataset Export</p>
+          <p className="mt-1.5 text-base font-black leading-tight text-slate-950">Export approved recordings as CSV</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
             Includes all approved rows with metadata. No personal data beyond gender, dialect, country, and city.
           </p>
         </div>
@@ -1237,7 +1365,7 @@ function ExportCard({
         </div>
       </div>
       {error && (
-        <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">{error}</p>
+        <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">{error}</p>
       )}
     </section>
   );
@@ -1255,6 +1383,56 @@ function formatBreakdown(counts: Record<string, number>): string {
   const entries = Object.entries(counts);
   if (entries.length === 0) return "None";
   return entries.map(([label, count]) => `${label}: ${count}`).join(", ");
+}
+
+function getBreakdownItems(counts: Record<string, number>): BreakdownItem[] {
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+function countPromptCsvRows(csvText: string): number {
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return 0;
+
+  const firstCells = splitCsvPreviewLine(lines[0]).map((cell) => cell.toLowerCase());
+  const hasHeader = firstCells.includes("text") || firstCells.includes("prompt");
+  const header = hasHeader ? firstCells : ["text", "category", "difficulty", "order_number"];
+  const dataLines = hasHeader ? lines.slice(1) : lines;
+  const textIndex = Math.max(header.indexOf("text"), header.indexOf("prompt"));
+
+  return dataLines.filter((line) => {
+    const cells = splitCsvPreviewLine(line);
+    return Boolean(cells[textIndex >= 0 ? textIndex : 0]?.trim());
+  }).length;
+}
+
+function splitCsvPreviewLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let quoted = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      i += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      cells.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+
+  cells.push(current);
+  return cells;
 }
 
 function unique(values: Array<string | null | undefined>): string[] {
