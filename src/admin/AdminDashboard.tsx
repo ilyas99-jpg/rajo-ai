@@ -53,6 +53,8 @@ type StatItem = {
   breakdown?: BreakdownItem[];
 };
 
+type PromptListSize = 25 | 50 | "all";
+
 export function AdminDashboard() {
   // undefined = Supabase session not yet resolved (loading)
   // null      = no active session
@@ -832,12 +834,20 @@ function PromptManager({
   const [selectedCsvFileName, setSelectedCsvFileName] = useState("");
   const [importSuccess, setImportSuccess] = useState("");
   const [importError, setImportError] = useState("");
+  const [promptsExpanded, setPromptsExpanded] = useState(false);
+  const [promptListSize, setPromptListSize] = useState<PromptListSize>(25);
+  const [expandedPromptId, setExpandedPromptId] = useState("");
   const csvFileInputRef = useRef<HTMLInputElement | null>(null);
   const promptListRef = useRef<HTMLDivElement | null>(null);
 
   const selectedPack = packs.find((pack) => pack.id === selectedPackId) ?? packs[0];
   const activeCount = (pack: AdminPromptPack) => pack.prompts.filter((prompt) => prompt.is_active).length;
   const csvRowCount = useMemo(() => countPromptCsvRows(csvText), [csvText]);
+  const visiblePrompts = selectedPack
+    ? promptListSize === "all"
+      ? selectedPack.prompts
+      : selectedPack.prompts.slice(0, promptListSize)
+    : [];
 
   useEffect(() => {
     if (!selectedPackId && packs[0]) setSelectedPackId(packs[0].id);
@@ -848,6 +858,9 @@ function PromptManager({
     setSelectedCsvFileName("");
     setImportSuccess("");
     setImportError("");
+    setPromptsExpanded(false);
+    setExpandedPromptId("");
+    setPromptListSize(25);
     if (csvFileInputRef.current) csvFileInputRef.current.value = "";
   }, [selectedPack?.id]);
 
@@ -1043,6 +1056,7 @@ function PromptManager({
                             setImportSuccess("Prompts imported successfully");
                             setCsvText("");
                             setSelectedCsvFileName("");
+                            setPromptsExpanded(true);
                             if (csvFileInputRef.current) csvFileInputRef.current.value = "";
                             window.setTimeout(() => {
                               promptListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1060,19 +1074,95 @@ function PromptManager({
                 </div>
               </div>
 
-              <div className="mt-5 space-y-2" ref={promptListRef}>
-                {selectedPack.prompts.map((prompt) => (
-                  <PromptEditor
-                    busy={busy}
-                    key={prompt.id}
-                    prompt={prompt}
-                    onToggle={() => void onTogglePrompt(prompt)}
-                    onDelete={() => void onDeletePrompt(prompt.id)}
-                    onUpdate={(changes) => void onUpdatePrompt(prompt.id, changes)}
-                  />
-                ))}
-                {selectedPack.prompts.length === 0 && (
-                  <p className="rounded-2xl bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">No prompts in this pack yet.</p>
+              <div className="mt-5 rounded-2xl border border-slate-100 bg-white p-4" ref={promptListRef}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-950">Manage prompts</h4>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      {selectedPack.prompts.length} prompt{selectedPack.prompts.length === 1 ? "" : "s"} in this pack
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {promptsExpanded && (
+                      <button
+                        className="admin-action admin-action-secondary"
+                        type="button"
+                        onClick={() => {
+                          setPromptsExpanded(false);
+                          setExpandedPromptId("");
+                        }}
+                      >
+                        Collapse
+                      </button>
+                    )}
+                    <button
+                      className="admin-action admin-action-primary"
+                      disabled={selectedPack.prompts.length === 0}
+                      type="button"
+                      onClick={() => setPromptsExpanded((current) => !current)}
+                    >
+                      {promptsExpanded ? "Hide Prompts" : `View Prompts (${selectedPack.prompts.length})`}
+                    </button>
+                  </div>
+                </div>
+
+                {!promptsExpanded && selectedPack.prompts.length === 0 && (
+                  <p className="mt-4 rounded-2xl bg-slate-50 p-5 text-center text-sm font-bold text-slate-500">No prompts in this pack yet.</p>
+                )}
+
+                {promptsExpanded && (
+                  <div className="mt-4">
+                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-xs font-bold text-slate-500">
+                        Showing {visiblePrompts.length} of {selectedPack.prompts.length}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {([25, 50, "all"] as PromptListSize[]).map((size) => (
+                          <button
+                            className={`compact-btn ${
+                              promptListSize === size ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700"
+                            }`}
+                            key={String(size)}
+                            type="button"
+                            onClick={() => setPromptListSize(size)}
+                          >
+                            {size === "all" ? "Show All" : `Show ${size}`}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto rounded-2xl border border-slate-100">
+                      <table className="min-w-[920px] w-full border-collapse text-left">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Order</th>
+                            <th className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Text</th>
+                            <th className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Category</th>
+                            <th className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Difficulty</th>
+                            <th className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Status</th>
+                            <th className="px-3 py-2 text-[11px] font-black uppercase tracking-wide text-slate-500">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visiblePrompts.map((prompt) => (
+                            <PromptTableRow
+                              busy={busy}
+                              expanded={expandedPromptId === prompt.id}
+                              key={prompt.id}
+                              prompt={prompt}
+                              onExpand={() =>
+                                setExpandedPromptId((current) => (current === prompt.id ? "" : prompt.id))
+                              }
+                              onToggle={() => void onTogglePrompt(prompt)}
+                              onDelete={() => void onDeletePrompt(prompt.id)}
+                              onUpdate={(changes) => void onUpdatePrompt(prompt.id, changes)}
+                            />
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -1083,15 +1173,19 @@ function PromptManager({
   );
 }
 
-function PromptEditor({
+function PromptTableRow({
   busy,
+  expanded,
   prompt,
+  onExpand,
   onToggle,
   onDelete,
   onUpdate,
 }: {
   busy: boolean;
+  expanded: boolean;
   prompt: AdminPromptPack["prompts"][number];
+  onExpand: () => void;
   onToggle: () => void;
   onDelete: () => void;
   onUpdate: (changes: { text: string; category: string; difficulty: string; orderNumber: number }) => void;
@@ -1115,31 +1209,87 @@ function PromptEditor({
     orderNumber !== prompt.order_number;
 
   return (
-    <div className="rounded-xl border border-slate-100 bg-white p-3">
-      <div className="grid gap-2 lg:grid-cols-[70px_1fr_130px_130px_auto_auto_auto] lg:items-center">
-        <input className="admin-field" min={1} type="number" value={orderNumber} onChange={(event) => setOrderNumber(Number(event.target.value))} />
-        <input className="admin-field flex-1" value={text} onChange={(event) => setText(event.target.value)} />
-        <input className="admin-field" placeholder="Category" value={category} onChange={(event) => setCategory(event.target.value)} />
-        <input className="admin-field" placeholder="Difficulty" value={difficulty} onChange={(event) => setDifficulty(event.target.value)} />
-        <span className={`rounded-full px-3 py-1 text-xs font-black ${prompt.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
-          {prompt.is_active ? "Active" : "Inactive"}
-        </span>
-        <button
-          className="compact-btn bg-blue-600 text-white"
-          disabled={busy || !isDirty}
-          onClick={() => onUpdate({ text, category, difficulty, orderNumber })}
-          type="button"
-        >
-          Save
-        </button>
-        <button className="compact-btn bg-slate-700 text-white" disabled={busy} onClick={onToggle} type="button">
-          {prompt.is_active ? "Deactivate" : "Activate"}
-        </button>
-        <button className="compact-btn bg-red-600 text-white" disabled={busy} onClick={onDelete} type="button">
-          Delete
-        </button>
-      </div>
-    </div>
+    <>
+      <tr className="border-t border-slate-100 align-middle">
+        <td className="w-24 px-3 py-2">
+          <input
+            className="admin-field min-h-9 px-2 py-1 text-xs"
+            min={1}
+            type="number"
+            value={orderNumber}
+            onChange={(event) => setOrderNumber(Number(event.target.value))}
+          />
+        </td>
+        <td className="max-w-[360px] px-3 py-2">
+          <button
+            className="block w-full truncate text-left text-sm font-bold text-slate-800 hover:text-blue-700"
+            title={prompt.text}
+            type="button"
+            onClick={onExpand}
+          >
+            {text || "Untitled prompt"}
+          </button>
+        </td>
+        <td className="w-36 px-3 py-2">
+          <input
+            className="admin-field min-h-9 px-2 py-1 text-xs"
+            placeholder="Category"
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+          />
+        </td>
+        <td className="w-36 px-3 py-2">
+          <input
+            className="admin-field min-h-9 px-2 py-1 text-xs"
+            placeholder="Difficulty"
+            value={difficulty}
+            onChange={(event) => setDifficulty(event.target.value)}
+          />
+        </td>
+        <td className="w-28 px-3 py-2">
+          <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${prompt.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+            {prompt.is_active ? "Active" : "Inactive"}
+          </span>
+        </td>
+        <td className="w-72 px-3 py-2">
+          <div className="flex flex-wrap gap-1.5">
+            <button className="compact-btn bg-blue-50 text-blue-700" type="button" onClick={onExpand}>
+              {expanded ? "Close" : "Open"}
+            </button>
+            <button
+              className="compact-btn bg-blue-600 text-white"
+              disabled={busy || !isDirty}
+              onClick={() => onUpdate({ text, category, difficulty, orderNumber })}
+              type="button"
+            >
+              Save
+            </button>
+            <button className="compact-btn bg-slate-700 text-white" disabled={busy} onClick={onToggle} type="button">
+              {prompt.is_active ? "Deactivate" : "Activate"}
+            </button>
+            <button className="compact-btn bg-red-600 text-white" disabled={busy} onClick={onDelete} type="button">
+              Delete
+            </button>
+          </div>
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="border-t border-slate-100 bg-slate-50">
+          <td className="px-3 py-3" colSpan={6}>
+            <label className="block">
+              <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wide text-slate-500">
+                Prompt text
+              </span>
+              <textarea
+                className="admin-field min-h-24"
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+              />
+            </label>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
