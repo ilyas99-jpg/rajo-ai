@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Award, BarChart2, Bell, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flame, Globe, Lock, LogOut, Mic, RotateCcw, Shield, Star, Trophy, Upload, User, XCircle } from "lucide-react";
 import { Navbar } from "./components/Navbar";
 import { BottomNav } from "./components/BottomNav";
@@ -23,10 +23,20 @@ import { useLanguage } from "./i18n";
 import type { ProfileUpdates, PublicStats } from "./lib/supabaseService";
 import type { AgeRange, PromptPack, RecordingHistoryItem, RecordingMetadata, RegisteredUser, RegistrationFormData, VoicePrompt } from "./types";
 import { createRegisteredUser } from "./utils/submissions";
+import {
+  deletePendingRecording,
+  getPendingCount,
+  getPendingRecordings,
+  incrementRetryCount,
+  markFailedPermanently,
+  saveOfflineRecording,
+} from "./lib/offlineQueue";
 
 type View = "home" | "about" | "auth" | "dashboard" | "record" | "profile" | "contributions" | "settings";
 type AuthMode = "register" | "login";
 type RecorderState = "idle" | "starting" | "recording" | "recorded";
+
+const MAX_OFFLINE_RETRIES = 5;
 
 const DIALECT_OPTIONS = [
   "Maxaa Tiri",
@@ -101,10 +111,12 @@ function VoiceCollectionApp() {
   const [promptProgressMessage, setPromptProgressMessage] = useState("");
   const [formData, setFormData] = useState(initialFormData);
   const postAuthRef = useRef<View>("dashboard");
+  const isSyncingRef = useRef(false);
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [pendingOfflineCount, setPendingOfflineCount] = useState(0);
 
   const stats = useMemo(() => {
     const totalSeconds = history.reduce((sum, item) => sum + (item.durationSeconds ?? 0), 0);
@@ -134,6 +146,10 @@ function VoiceCollectionApp() {
           setDonorId(profile.donorId);
           setLoginEmail(profile.user.email);
           await loadProgress(profile.donorId, profile.user.authUserId, profile.user.dialect);
+          // Pass credentials directly — React state hasn't flushed yet at this point.
+          if (navigator.onLine) {
+            void syncOfflineRecordings({ donorId: profile.donorId, user: profile.user });
+          }
           if (startingPath === "/record") setView("record");
           else if (startingPath === "/profile") setView("profile");
           else if (startingPath === "/contributions") setView("contributions");
@@ -163,6 +179,106 @@ function VoiceCollectionApp() {
     if (!user || !donorId) return;
     updateUserLanguagePreference(donorId, language).catch(() => {});
   }, [donorId, language, user]);
+
+  // Load initial offline pending count from IndexedDB
+  useEffect(() => {
+    getPendingCount().then(setPendingOfflineCount).catch(() => {});
+  }, []);
+
+  const syncOfflineRecordings = useCallback(async (
+    credentials?: { donorId: string; user: RegisteredUser },
+  ) => {
+    const effectiveDonorId = credentials?.donorId ?? donorId;
+    const effectiveUser = credentials?.user ?? user;
+    if (!effectiveUser || !effectiveDonorId) return;
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
+
+    let pending;
+    try {
+      pending = await getPendingRecordings();
+    } catch {
+      isSyncingRef.current = false;
+      return;
+    }
+
+    if (pending.length === 0) {
+      isSyncingRef.current = false;
+      return;
+    }
+
+    console.log(`[RajoOffline] Sync started — ${pending.length} pending recording(s)`);
+
+    for (const item of pending) {
+      try {
+        const recording = await uploadAndSaveRecording(
+          item.donorId,
+          item.promptId,
+          item.promptText,
+          item.dialect,
+          item.gender,
+          {
+            ageRange: item.ageRange,
+            country: item.country,
+            city: item.city,
+            deviceType: item.deviceType,
+            backgroundNoise: item.backgroundNoise,
+            speakingSpeed: item.speakingSpeed,
+            consent: true,
+          },
+          item.audioBlob,
+        );
+        await deletePendingRecording(item.id);
+        setPendingOfflineCount((c) => Math.max(0, c - 1));
+        setHistory((items) => [recording, ...items]);
+        setCompletedPromptIds((ids) =>
+          ids.includes(item.promptId) ? ids : [...ids, item.promptId],
+        );
+        console.log(`[RajoOffline] Sync success — promptId: ${item.promptId}`);
+      } catch (err) {
+        const newCount = await incrementRetryCount(item.id).catch(() => item.retryCount + 1);
+        console.warn(
+          `[RajoOffline] Sync failed (attempt ${newCount}/${MAX_OFFLINE_RETRIES}) — promptId: ${item.promptId}`,
+          err,
+        );
+        if (newCount >= MAX_OFFLINE_RETRIES) {
+          await markFailedPermanently(item.id).catch(() => {});
+          setPendingOfflineCount((c) => Math.max(0, c - 1));
+          console.error(
+            `[RajoOffline] Permanently failed after ${MAX_OFFLINE_RETRIES} attempts — promptId: ${item.promptId}`,
+          );
+        }
+      }
+    }
+
+    isSyncingRef.current = false;
+  }, [donorId, user]);
+
+  // Auto-sync when network comes back
+  useEffect(() => {
+    const onOnline = () => void syncOfflineRecordings();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [syncOfflineRecordings]);
+
+  // Auto-sync when app returns to foreground (critical for iOS PWA background suspend)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && navigator.onLine) {
+        void syncOfflineRecordings();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [syncOfflineRecordings]);
+
+  // 30-second heartbeat: retry while online and pending items exist
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (navigator.onLine) void syncOfflineRecordings();
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [syncOfflineRecordings]);
 
   function navigate(nextView: View, path: string) {
     window.history.pushState({}, "", path);
@@ -272,8 +388,31 @@ function VoiceCollectionApp() {
     }
   }
 
-  async function handleSubmitRecording(prompt: VoicePrompt, blob: Blob, metadata: RecordingMetadata) {
+  async function handleSubmitRecording(prompt: VoicePrompt, blob: Blob, metadata: RecordingMetadata): Promise<{ offlineSaved: boolean }> {
     if (!user || !donorId) throw new Error("Please sign in before submitting a recording.");
+
+    if (!navigator.onLine) {
+      await saveOfflineRecording({
+        audioBlob: blob,
+        promptId: prompt.sentenceId,
+        promptText: prompt.sentenceText,
+        packId: prompt.packId,
+        donorId,
+        authUserId: user.authUserId,
+        dialect: user.dialect,
+        gender: user.gender,
+        ageRange: metadata.ageRange,
+        country: metadata.country,
+        city: metadata.city,
+        deviceType: metadata.deviceType,
+        backgroundNoise: metadata.backgroundNoise,
+        speakingSpeed: metadata.speakingSpeed,
+        createdAt: new Date().toISOString(),
+      });
+      setPendingOfflineCount((c) => c + 1);
+      console.log(`[RajoOffline] Saved offline — promptId: ${prompt.sentenceId}`);
+      return { offlineSaved: true };
+    }
 
     const recording = await uploadAndSaveRecording(
       donorId,
@@ -306,6 +445,8 @@ function VoiceCollectionApp() {
     setPromptPacks(workspace.packs);
     setPrompts(workspace.prompts);
     setPromptProgressMessage(workspace.progressMessage);
+
+    return { offlineSaved: false };
   }
 
   function startFromHome(mode: AuthMode, afterAuth: View = "dashboard") {
@@ -400,6 +541,7 @@ function VoiceCollectionApp() {
             history={history}
             unlockNotice={unlockNotice}
             onDismissUnlock={() => setUnlockNotice("")}
+            pendingOfflineCount={pendingOfflineCount}
             prompts={prompts}
             user={user}
             onBack={() => navigate("dashboard", "/")}
@@ -1302,6 +1444,7 @@ function RecordingPage({
   history,
   unlockNotice,
   onDismissUnlock,
+  pendingOfflineCount,
   prompts,
   user,
   onBack,
@@ -1311,10 +1454,11 @@ function RecordingPage({
   history: RecordingHistoryItem[];
   unlockNotice: string;
   onDismissUnlock: () => void;
+  pendingOfflineCount: number;
   prompts: VoicePrompt[];
   user: RegisteredUser;
   onBack: () => void;
-  onSubmitRecording: (prompt: VoicePrompt, blob: Blob, metadata: RecordingMetadata) => Promise<void>;
+  onSubmitRecording: (prompt: VoicePrompt, blob: Blob, metadata: RecordingMetadata) => Promise<{ offlineSaved: boolean }>;
 }) {
   const { t } = useLanguage();
   const firstIncompleteIndex = Math.max(prompts.findIndex((prompt) => !completedPromptIds.includes(prompt.sentenceId)), 0);
@@ -1330,6 +1474,7 @@ function RecordingPage({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [offlineSuccess, setOfflineSuccess] = useState(false);
   const [liveSeconds, setLiveSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -1473,9 +1618,10 @@ function RecordingPage({
     if (!audioBlob || !prompt) return;
     setBusy(true);
     setError("");
+    setOfflineSuccess(false);
 
     try {
-      await onSubmitRecording(prompt, audioBlob, {
+      const result = await onSubmitRecording(prompt, audioBlob, {
         ageRange: user.ageRange,
         country: user.country,
         city: user.city,
@@ -1484,9 +1630,18 @@ function RecordingPage({
         speakingSpeed: metadata.speakingSpeed,
         consent: true,
       });
+      if (result.offlineSaved) {
+        setOfflineSuccess(true);
+      }
       resetRecording();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit recording.");
+      const raw = err instanceof Error ? err.message : "";
+      const isNetworkError =
+        raw.includes("Load failed") ||
+        raw.includes("Failed to fetch") ||
+        raw.includes("Network request failed") ||
+        raw.includes("NetworkError");
+      setError(isNetworkError ? t("record.offlineError") : (raw || t("record.submitFailed")));
     } finally {
       setBusy(false);
     }
@@ -1529,6 +1684,23 @@ function RecordingPage({
                   {t("common.continue")}
                 </button>
               </div>
+            </div>
+          )}
+
+          {offlineSuccess && (
+            <div className="mb-5 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-800">{t("record.offlineSaved")}</p>
+            </div>
+          )}
+
+          {pendingOfflineCount > 0 && (
+            <div className="mb-5 flex items-center gap-2 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-2.5">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[11px] font-black text-white">
+                {pendingOfflineCount}
+              </span>
+              <p className="text-xs font-semibold text-amber-800">
+                {t("record.offlinePending", { count: pendingOfflineCount })}
+              </p>
             </div>
           )}
           <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
