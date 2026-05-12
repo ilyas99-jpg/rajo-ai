@@ -1210,59 +1210,35 @@ function PromptTableRow({
 
   return (
     <>
-      <tr className="border-t border-slate-100 align-middle">
-        <td className="w-24 px-3 py-2">
-          <input
-            className="admin-field min-h-9 px-2 py-1 text-xs"
-            min={1}
-            type="number"
-            value={orderNumber}
-            onChange={(event) => setOrderNumber(Number(event.target.value))}
-          />
+      <tr className="border-t border-slate-100 align-middle hover:bg-slate-50/60">
+        <td className="w-14 px-3 py-2 text-xs font-bold tabular-nums text-slate-600">
+          {prompt.order_number}
         </td>
-        <td className="max-w-[360px] px-3 py-2">
+        <td className="max-w-[340px] px-3 py-2">
           <button
-            className="block w-full truncate text-left text-sm font-bold text-slate-800 hover:text-blue-700"
+            className="block w-full truncate text-left text-sm font-semibold text-slate-800 hover:text-blue-700"
             title={prompt.text}
             type="button"
             onClick={onExpand}
           >
-            {text || "Untitled prompt"}
+            {prompt.text || <span className="italic text-slate-400">Untitled</span>}
           </button>
         </td>
-        <td className="w-36 px-3 py-2">
-          <input
-            className="admin-field min-h-9 px-2 py-1 text-xs"
-            placeholder="Category"
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-          />
+        <td className="w-32 px-3 py-2 text-xs text-slate-600">
+          {prompt.category || <span className="text-slate-400">—</span>}
         </td>
-        <td className="w-36 px-3 py-2">
-          <input
-            className="admin-field min-h-9 px-2 py-1 text-xs"
-            placeholder="Difficulty"
-            value={difficulty}
-            onChange={(event) => setDifficulty(event.target.value)}
-          />
+        <td className="w-28 px-3 py-2 text-xs text-slate-600">
+          {prompt.difficulty || <span className="text-slate-400">—</span>}
         </td>
-        <td className="w-28 px-3 py-2">
+        <td className="w-24 px-3 py-2">
           <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-black ${prompt.is_active ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
             {prompt.is_active ? "Active" : "Inactive"}
           </span>
         </td>
-        <td className="w-72 px-3 py-2">
+        <td className="w-52 px-3 py-2">
           <div className="flex flex-wrap gap-1.5">
             <button className="compact-btn bg-blue-50 text-blue-700" type="button" onClick={onExpand}>
-              {expanded ? "Close" : "Open"}
-            </button>
-            <button
-              className="compact-btn bg-blue-600 text-white"
-              disabled={busy || !isDirty}
-              onClick={() => onUpdate({ text, category, difficulty, orderNumber })}
-              type="button"
-            >
-              Save
+              {expanded ? "Close" : "Edit"}
             </button>
             <button className="compact-btn bg-slate-700 text-white" disabled={busy} onClick={onToggle} type="button">
               {prompt.is_active ? "Deactivate" : "Activate"}
@@ -1274,18 +1250,64 @@ function PromptTableRow({
         </td>
       </tr>
       {expanded && (
-        <tr className="border-t border-slate-100 bg-slate-50">
-          <td className="px-3 py-3" colSpan={6}>
-            <label className="block">
-              <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wide text-slate-500">
-                Prompt text
-              </span>
-              <textarea
-                className="admin-field min-h-24"
-                value={text}
-                onChange={(event) => setText(event.target.value)}
-              />
-            </label>
+        <tr className="border-t border-slate-100 bg-blue-50/40">
+          <td className="px-4 py-3" colSpan={6}>
+            <div className="grid gap-3">
+              <label className="block">
+                <span className="mb-1.5 block text-[11px] font-black uppercase tracking-wide text-slate-500">Prompt text</span>
+                <textarea
+                  className="admin-field min-h-20"
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                />
+              </label>
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-3">
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500">Order</span>
+                  <input
+                    className="admin-field"
+                    min={1}
+                    type="number"
+                    value={orderNumber}
+                    onChange={(event) => setOrderNumber(Number(event.target.value))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500">Category</span>
+                  <input
+                    className="admin-field"
+                    placeholder="Category"
+                    value={category}
+                    onChange={(event) => setCategory(event.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-black uppercase tracking-wide text-slate-500">Difficulty</span>
+                  <input
+                    className="admin-field"
+                    placeholder="Difficulty"
+                    value={difficulty}
+                    onChange={(event) => setDifficulty(event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="admin-action admin-action-primary"
+                  disabled={busy || !isDirty}
+                  type="button"
+                  onClick={() => onUpdate({ text, category, difficulty, orderNumber })}
+                >
+                  Save changes
+                </button>
+                <button className="admin-action admin-action-secondary" type="button" onClick={onExpand}>
+                  Close
+                </button>
+                {isDirty && (
+                  <span className="text-xs font-bold text-amber-600">Unsaved changes</span>
+                )}
+              </div>
+            </div>
           </td>
         </tr>
       )}

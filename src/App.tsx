@@ -637,7 +637,6 @@ function HeroSection({ onAbout, onStart }: { onAbout: () => void; onStart: () =>
             
           </figcaption>
         </figure>
-n
       </div>
     </section>
   );
@@ -796,6 +795,8 @@ function CtaSection({ onStart }: { onStart: () => void }) {
 }
 
 function SiteFooter() {
+  const { t } = useLanguage();
+
   return (
     <footer className="bg-slate-950 px-5 py-12 text-center">
       <img
@@ -803,14 +804,15 @@ function SiteFooter() {
         className="mx-auto h-10 w-auto object-contain opacity-90"
         src="/logo%20rajo%20ai.png"
       />
-      <p className="mt-5 text-sm font-semibold text-slate-400">Questions or partnerships?</p>
+      <p className="mt-5 text-sm font-semibold text-slate-400">{t("footer.questions")}</p>
+      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">{t("footer.partnershipText")}</p>
       <a
         className="mt-1 block text-sm font-black text-blue-400 hover:text-blue-300"
         href="mailto:hello@rajoai.com"
       >
         hello@rajoai.com
       </a>
-      <p className="mt-8 text-xs text-slate-600">Built for Somali voices, with respect and consent.</p>
+      <p className="mt-8 text-xs text-slate-600">{t("footer.note")}</p>
       <p className="mt-1 text-xs text-slate-700">© {new Date().getFullYear()} Rajo AI</p>
     </footer>
   );
