@@ -1,6 +1,8 @@
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Award, BarChart2, Bell, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flame, Globe, Lock, LogOut, Mic, RotateCcw, Shield, Star, Trophy, Upload, User, XCircle } from "lucide-react";
 import { Navbar } from "./components/Navbar";
+import { BottomNav } from "./components/BottomNav";
+import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { BrandWaveform } from "./components/Brand";
 import {
@@ -317,6 +319,8 @@ function VoiceCollectionApp() {
     navigate("auth", "/signin");
   }
 
+  const appViewActive = (["dashboard", "record", "profile", "contributions", "settings"] as View[]).includes(view);
+
   return (
     <div key={language} className="min-h-screen bg-white text-slate-950">
       <Navbar
@@ -353,7 +357,9 @@ function VoiceCollectionApp() {
         onSettings={() => user ? navigate("settings", "/settings") : startFromHome("login")}
       />
 
-      <main>
+      <PWAInstallPrompt />
+
+      <main className={user && appViewActive ? "pb-[calc(68px+env(safe-area-inset-bottom))] md:pb-0" : ""}>
         {authLoading ? (
           <LoadingScreen />
         ) : view === "home" ? (
@@ -426,6 +432,15 @@ function VoiceCollectionApp() {
           <HomePage onAbout={() => navigate("about", "/about")} onStart={() => startFromHome("register", "record")} />
         )}
       </main>
+
+      <BottomNav
+        activeView={view}
+        user={user}
+        onDashboard={() => navigate("dashboard", "/")}
+        onRecord={() => navigate("record", "/record")}
+        onContributions={() => navigate("contributions", "/contributions")}
+        onSettings={() => navigate("settings", "/settings")}
+      />
     </div>
   );
 }
@@ -1315,6 +1330,7 @@ function RecordingPage({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [liveSeconds, setLiveSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const startedAtRef = useRef<number | null>(null);
@@ -1334,6 +1350,29 @@ function RecordingPage({
   useEffect(() => {
     return () => stopActiveStream();
   }, []);
+
+  // Live recording timer
+  useEffect(() => {
+    if (recorderState !== "recording") {
+      setLiveSeconds(0);
+      return;
+    }
+    setLiveSeconds(0);
+    const interval = setInterval(() => setLiveSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [recorderState]);
+
+  // Warn before leaving while recording or uploading
+  useEffect(() => {
+    const shouldWarn = recorderState === "recording" || busy;
+    if (!shouldWarn) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [recorderState, busy]);
 
   useEffect(() => {
     setPromptIndex(Math.max(prompts.findIndex((item) => !completedPromptIds.includes(item.sentenceId)), 0));
@@ -1511,7 +1550,18 @@ function RecordingPage({
 
           {recorderState === "recording" && (
             <div className="mt-6 rounded-3xl border border-red-100 bg-red-50 p-5 text-center">
-              <p className="text-lg font-black text-red-700">{t("record.recording")}</p>
+              <div className="flex items-center justify-center gap-2.5">
+                <span className="relative flex h-3 w-3 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+                </span>
+                <p className="text-base font-black text-red-700">{t("record.recording")}</p>
+              </div>
+              <p className="mt-2 tabular-nums text-3xl font-black text-red-700">
+                {String(Math.floor(liveSeconds / 60)).padStart(2, "0")}
+                <span className="animate-pulse">:</span>
+                {String(liveSeconds % 60).padStart(2, "0")}
+              </p>
             </div>
           )}
 
@@ -1534,18 +1584,46 @@ function RecordingPage({
           <div className="mt-7 flex flex-wrap gap-3">
             {recorderState === "idle" && (
               <>
-                <button className="btn-primary" type="button" onClick={() => void startRecording()}>{t("common.startRecording")}</button>
+                <button
+                  className="btn-primary flex-1 min-h-[52px] text-base sm:flex-none"
+                  type="button"
+                  onClick={() => void startRecording()}
+                >
+                  <Mic className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
+                  {t("common.startRecording")}
+                </button>
                 <button className="btn-secondary" onClick={skipPrompt}>{t("record.skip")}</button>
               </>
             )}
             {recorderState === "recording" && (
-              <button className="btn-danger" onClick={stopRecording}>{t("record.stop")}</button>
+              <button
+                className="btn-danger flex-1 min-h-[52px] text-base sm:flex-none"
+                onClick={stopRecording}
+              >
+                {t("record.stop")}
+              </button>
             )}
             {recorderState === "recorded" && (
               <>
                 <button className="btn-secondary" onClick={() => audioRef.current?.play()}>{t("record.play")}</button>
                 <button className="btn-secondary" onClick={resetRecording}>{t("record.rerecord")}</button>
-                <button className="btn-primary" disabled={busy} onClick={submitRecording}>{busy ? t("record.submitting") : t("record.submit")}</button>
+                <button
+                  className="btn-primary flex-1 min-h-[52px] text-base sm:flex-none"
+                  disabled={busy}
+                  onClick={submitRecording}
+                >
+                  {busy ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      {t("record.submitting")}
+                    </span>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
+                      {t("record.submit")}
+                    </>
+                  )}
+                </button>
               </>
             )}
           </div>

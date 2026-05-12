@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#467ed3"/>
+  <!-- Waveform bars centered in the icon -->
+  <g fill="white" opacity="0.95">
+    <rect x="136" y="196" width="28" height="120" rx="14"/>
+    <rect x="184" y="156" width="28" height="200" rx="14"/>
+    <rect x="232" y="176" width="28" height="160" rx="14"/>
+    <rect x="280" y="136" width="28" height="240" rx="14"/>
+    <rect x="328" y="176" width="28" height="160" rx="14"/>
+    <rect x="376" y="216" width="28" height="80" rx="14"/>
+  </g>
+  <!-- RAJO text -->
+  <text
+    x="256"
+    y="420"
+    font-family="'Inter', 'Helvetica Neue', Arial, sans-serif"
+    font-size="58"
+    font-weight="900"
+    fill="white"
+    text-anchor="middle"
+    letter-spacing="4"
+  >RAJO</text>
+</svg>
