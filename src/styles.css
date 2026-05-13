@@ -110,26 +110,37 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  animation: rajo-logo-entrance 0.9s cubic-bezier(0.22, 1, 0.36, 1) both,
-             rajo-logo-breathe 3.6s ease-in-out 0.9s infinite;
+  animation: rajo-logo-entrance 0.8s cubic-bezier(0.22, 1, 0.36, 1) both,
+             rajo-logo-breathe 2.2s ease-in-out 0.8s infinite;
 }
 
+/* Ambient glow halo — pulses in sync with the logo */
 .rajo-loader-logo-wrap::before {
   content: "";
   position: absolute;
-  inset: -24px -32px;
+  inset: -22px -30px;
   z-index: -1;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(70, 126, 211, 0.22) 0%, transparent 70%);
-  filter: blur(18px);
-  animation: rajo-glow 3.6s ease-in-out 0.9s infinite;
+  background: radial-gradient(circle, rgba(70, 126, 211, 0.32) 0%, transparent 65%);
+  filter: blur(14px);
+  animation: rajo-glow 2.2s ease-in-out 0.8s infinite;
+}
+
+/* Expanding ring — primary "loading" signal */
+.rajo-loader-logo-wrap::after {
+  content: "";
+  position: absolute;
+  inset: -12px -18px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(70, 126, 211, 0.5);
+  animation: rajo-ring 2.2s ease-out 0.8s infinite;
 }
 
 @keyframes rajo-logo-entrance {
   0% {
     opacity: 0;
-    transform: scale(0.88);
-    filter: blur(6px);
+    transform: scale(0.86);
+    filter: blur(8px);
   }
   100% {
     opacity: 1;
@@ -140,29 +151,42 @@ button {
 
 @keyframes rajo-logo-breathe {
   0%, 100% {
-    opacity: 0.82;
-    transform: scale(0.978);
+    opacity: 0.68;
+    transform: scale(0.962);
   }
   50% {
     opacity: 1;
-    transform: scale(1.012);
+    transform: scale(1.022);
   }
 }
 
 @keyframes rajo-glow {
   0%, 100% {
-    opacity: 0.3;
-    transform: scale(0.92);
+    opacity: 0.2;
+    transform: scale(0.86);
   }
   50% {
-    opacity: 0.85;
-    transform: scale(1.08);
+    opacity: 1;
+    transform: scale(1.14);
+  }
+}
+
+@keyframes rajo-ring {
+  0% {
+    opacity: 0.65;
+    transform: scale(0.9);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .rajo-loader-logo-wrap,
-  .rajo-loader-logo-wrap::before {
+  .rajo-loader-logo-wrap::before,
+  .rajo-loader-logo-wrap::after {
     animation: none;
+    opacity: 1;
   }
 }
