@@ -1509,7 +1509,7 @@ function RecordingPage({
 
   // Warn before leaving while recording or uploading
   useEffect(() => {
-    const shouldWarn = recorderState === "recording" || busy;
+    const shouldWarn = recorderState === "recording" || submitPhase === "uploading";
     if (!shouldWarn) return;
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
@@ -1517,7 +1517,7 @@ function RecordingPage({
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [recorderState, busy]);
+  }, [recorderState, submitPhase]);
 
   useEffect(() => {
     setPromptIndex(Math.max(prompts.findIndex((item) => !completedPromptIds.includes(item.sentenceId)), 0));
