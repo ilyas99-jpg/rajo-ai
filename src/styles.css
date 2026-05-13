@@ -64,6 +64,11 @@ button {
     @apply inline-flex min-h-12 items-center justify-center rounded-2xl bg-red-600 px-6 py-3 text-center text-sm font-black text-white transition hover:bg-red-700 focus:outline-none focus:ring-4 focus:ring-red-100 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
+  .btn-success {
+    @apply inline-flex min-h-12 items-center justify-center rounded-2xl bg-emerald-600 px-6 py-3 text-center text-sm font-black text-white disabled:cursor-default;
+    animation: rajo-success-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
   .btn-ghost {
     @apply inline-flex min-h-10 items-center justify-center rounded-2xl px-4 py-2 text-center text-sm font-black text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-4 focus:ring-slate-100;
   }
@@ -180,6 +185,11 @@ button {
     opacity: 0;
     transform: scale(1.55);
   }
+}
+
+@keyframes rajo-success-pop {
+  0% { transform: scale(0.93); }
+  100% { transform: scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

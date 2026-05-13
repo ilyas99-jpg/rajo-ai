@@ -1472,7 +1472,7 @@ function RecordingPage({
     backgroundNoise: "Quiet",
     speakingSpeed: "Normal",
   });
-  const [busy, setBusy] = useState(false);
+  const [submitPhase, setSubmitPhase] = useState<"idle" | "uploading" | "success">("idle");
   const [error, setError] = useState("");
   const [offlineSuccess, setOfflineSuccess] = useState(false);
   const [liveSeconds, setLiveSeconds] = useState(0);
@@ -1606,6 +1606,7 @@ function RecordingPage({
     startedAtRef.current = null;
     setRecorderState("idle");
     setDuration(0);
+    setSubmitPhase("idle");
   }
 
   function stopActiveStream() {
@@ -1615,8 +1616,8 @@ function RecordingPage({
   }
 
   async function submitRecording() {
-    if (!audioBlob || !prompt) return;
-    setBusy(true);
+    if (!audioBlob || !prompt || submitPhase !== "idle") return;
+    setSubmitPhase("uploading");
     setError("");
     setOfflineSuccess(false);
 
@@ -1630,10 +1631,9 @@ function RecordingPage({
         speakingSpeed: metadata.speakingSpeed,
         consent: true,
       });
-      if (result.offlineSaved) {
-        setOfflineSuccess(true);
-      }
-      resetRecording();
+      if (result.offlineSaved) setOfflineSuccess(true);
+      setSubmitPhase("success");
+      setTimeout(resetRecording, 750);
     } catch (err) {
       const raw = err instanceof Error ? err.message : "";
       const isNetworkError =
@@ -1642,8 +1642,7 @@ function RecordingPage({
         raw.includes("Network request failed") ||
         raw.includes("NetworkError");
       setError(isNetworkError ? t("record.offlineError") : (raw || t("record.submitFailed")));
-    } finally {
-      setBusy(false);
+      setSubmitPhase("idle");
     }
   }
 
@@ -1781,25 +1780,44 @@ function RecordingPage({
           {/* 5. Submit area — only after recording is done */}
           {recorderState === "recorded" && (
             <div className="mt-3 flex flex-wrap gap-3 sm:mt-5">
-              <button className="btn-secondary" onClick={() => audioRef.current?.play()}>{t("record.play")}</button>
-              <button className="btn-secondary" onClick={resetRecording}>{t("record.rerecord")}</button>
               <button
-                className="btn-primary flex-1 min-h-[52px] text-base sm:flex-none"
-                disabled={busy}
-                onClick={submitRecording}
-              >
-                {busy ? (
-                  <span className="flex items-center gap-2">
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    {t("record.submitting")}
-                  </span>
-                ) : (
-                  <>
-                    <Upload className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
-                    {t("record.submit")}
-                  </>
-                )}
-              </button>
+                className="btn-secondary"
+                disabled={submitPhase !== "idle"}
+                onClick={() => audioRef.current?.play()}
+              >{t("record.play")}</button>
+              <button
+                className="btn-secondary"
+                disabled={submitPhase !== "idle"}
+                onClick={resetRecording}
+              >{t("record.rerecord")}</button>
+
+              {submitPhase === "success" ? (
+                <button
+                  className="btn-success flex-1 min-h-[52px] text-base sm:flex-none"
+                  disabled
+                  aria-live="polite"
+                >
+                  <CheckCircle2 className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
+                  {t("record.saved")}
+                </button>
+              ) : (
+                <button
+                  className="btn-primary flex-1 min-h-[52px] text-base sm:flex-none"
+                  onClick={() => void submitRecording()}
+                >
+                  {submitPhase === "uploading" ? (
+                    <span className="flex items-center gap-2">
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                      {t("record.submitting")}
+                    </span>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
+                      {t("record.submit")}
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
 
@@ -2639,7 +2657,7 @@ function LoadingScreen() {
     <div
       role="status"
       aria-live="polite"
-      className="flex min-h-[calc(100vh-68px)] items-center justify-center bg-white px-6"
+      className="flex min-h-[calc(100vh-68px)] items-center justify-center bg-white px-6 pb-[calc(68px+env(safe-area-inset-bottom))] md:pb-0"
     >
       <span className="sr-only">Loading Rajo AI</span>
       <div className="rajo-loader-logo-wrap">
