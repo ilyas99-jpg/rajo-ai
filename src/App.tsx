@@ -1662,19 +1662,19 @@ function RecordingPage({
   if (!prompt) return <CenteredMessage text={t("record.none")} />;
 
   return (
-    <section className="mx-auto max-w-4xl px-5 py-8">
-      <button className="btn-ghost mb-5" onClick={onBack}>{t("record.back")}</button>
+    <section className="mx-auto max-w-4xl px-4 py-4 sm:px-5 sm:py-8">
+      <button className="btn-ghost mb-3 sm:mb-5" onClick={onBack}>{t("record.back")}</button>
       <div className="app-card overflow-hidden">
-        <div className="border-b border-slate-200 bg-blue-50 px-5 py-4 sm:px-7">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="border-b border-slate-200 bg-blue-50 px-4 py-3 sm:px-7 sm:py-4">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <p className="font-bold text-blue-700">{t("record.promptOf", { current: promptIndex + 1, total: prompts.length })}</p>
             <p className="text-sm font-semibold text-slate-600">{user.fullName}</p>
           </div>
         </div>
 
-        <div className="p-5 sm:p-8">
+        <div className="p-4 sm:p-8">
           {unlockNotice && (
-            <div className="mb-6 rounded-3xl border border-blue-100 bg-blue-50 p-5">
+            <div className="mb-3 rounded-3xl border border-blue-100 bg-blue-50 p-4 sm:mb-6 sm:p-5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-lg font-black text-[#467ED3]">{unlockTitle}</p>
@@ -1688,13 +1688,13 @@ function RecordingPage({
           )}
 
           {offlineSuccess && (
-            <div className="mb-5 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+            <div className="mb-3 rounded-3xl border border-amber-200 bg-amber-50 p-3 sm:mb-5 sm:p-4">
               <p className="text-sm font-semibold text-amber-800">{t("record.offlineSaved")}</p>
             </div>
           )}
 
           {pendingOfflineCount > 0 && (
-            <div className="mb-5 flex items-center gap-2 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-2.5">
+            <div className="mb-3 flex items-center gap-2 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 sm:mb-5 sm:px-4 sm:py-2.5">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[11px] font-black text-white">
                 {pendingOfflineCount}
               </span>
@@ -1703,25 +1703,28 @@ function RecordingPage({
               </p>
             </div>
           )}
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+
+          {/* 1. Prompt card */}
+          <div className="rounded-3xl border border-slate-200 bg-white p-4 text-center shadow-sm sm:p-6">
             <p className="text-sm font-bold uppercase tracking-wide text-slate-500">{t("record.readPrompt")}</p>
-            <p className="mt-2 text-xs font-black uppercase tracking-widest text-[#467ED3]">{translatePackTitle(prompt.packTitle, t)}</p>
-            <h1 className="mt-5 text-3xl font-black leading-tight text-slate-950 sm:text-5xl">{prompt.sentenceText}</h1>
+            <p className="mt-1 text-xs font-black uppercase tracking-widest text-[#467ED3] sm:mt-2">{translatePackTitle(prompt.packTitle, t)}</p>
+            <h1 className="mt-3 text-3xl font-black leading-tight text-slate-950 sm:mt-5 sm:text-5xl">{prompt.sentenceText}</h1>
             {completed && (
-              <p className="mt-5 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
+              <p className="mt-3 rounded-full bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 sm:mt-5">
                 {t("record.completed")}
               </p>
             )}
           </div>
 
+          {/* 2. Recording controls — directly below prompt */}
           {recorderState === "starting" && (
-            <div className="mt-6 rounded-3xl border border-blue-100 bg-blue-50 p-5 text-center">
+            <div className="mt-3 rounded-3xl border border-blue-100 bg-blue-50 p-4 text-center sm:mt-4 sm:p-5">
               <p className="text-lg font-black text-blue-700">{t("record.starting")}</p>
             </div>
           )}
 
           {recorderState === "recording" && (
-            <div className="mt-6 rounded-3xl border border-red-100 bg-red-50 p-5 text-center">
+            <div className="mt-3 rounded-3xl border border-red-100 bg-red-50 p-4 text-center sm:mt-4 sm:p-5">
               <div className="flex items-center justify-center gap-2.5">
                 <span className="relative flex h-3 w-3 shrink-0">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
@@ -1729,82 +1732,82 @@ function RecordingPage({
                 </span>
                 <p className="text-base font-black text-red-700">{t("record.recording")}</p>
               </div>
-              <p className="mt-2 tabular-nums text-3xl font-black text-red-700">
+              <p className="mt-1.5 tabular-nums text-3xl font-black text-red-700">
                 {String(Math.floor(liveSeconds / 60)).padStart(2, "0")}
                 <span className="animate-pulse">:</span>
                 {String(liveSeconds % 60).padStart(2, "0")}
               </p>
+              <button
+                className="btn-danger mt-3 w-full min-h-[48px] text-base"
+                onClick={stopRecording}
+              >
+                {t("record.stop")}
+              </button>
             </div>
           )}
 
+          {recorderState === "idle" && (
+            <div className="mt-3 flex flex-wrap gap-3 sm:mt-4">
+              <button
+                className="btn-primary flex-1 min-h-[52px] text-base sm:flex-none"
+                type="button"
+                onClick={() => void startRecording()}
+              >
+                <Mic className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
+                {t("common.startRecording")}
+              </button>
+              <button className="btn-secondary" onClick={skipPrompt}>{t("record.skip")}</button>
+            </div>
+          )}
+
+          {/* 3. Playback preview */}
           {audioUrl && (
-            <div className="mt-6 rounded-3xl border border-blue-100 bg-blue-50 p-4">
+            <div className="mt-3 rounded-3xl border border-blue-100 bg-blue-50 p-3 sm:mt-5 sm:p-4">
               <audio ref={audioRef} className="w-full" controls src={audioUrl} />
-              <p className="mt-2 text-sm font-semibold text-blue-700">{t("record.duration", { seconds: duration.toFixed(1) })}</p>
+              <p className="mt-1.5 text-sm font-semibold text-blue-700 sm:mt-2">{t("record.duration", { seconds: duration.toFixed(1) })}</p>
             </div>
           )}
 
-          <div className="mt-6 rounded-3xl border border-slate-200 bg-white p-5">
+          {/* 4. Recording details */}
+          <div className="mt-3 rounded-3xl border border-slate-200 bg-white p-4 sm:mt-5 sm:p-5">
             <h2 className="text-lg font-black text-slate-950">{t("record.details")}</h2>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-3 grid gap-3 sm:mt-4 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <SelectField label={t("record.device")} value={metadata.deviceType} onChange={(value) => setMetadata({ ...metadata, deviceType: value })} options={["Phone", "Laptop", "External Microphone"]} />
               <SelectField label={t("record.noise")} value={metadata.backgroundNoise} onChange={(value) => setMetadata({ ...metadata, backgroundNoise: value })} options={["Quiet", "Medium", "Noisy"]} />
               <SelectField label={t("record.speed")} value={metadata.speakingSpeed} onChange={(value) => setMetadata({ ...metadata, speakingSpeed: value })} options={["Slow", "Normal", "Fast"]} />
             </div>
           </div>
 
-          <div className="mt-7 flex flex-wrap gap-3">
-            {recorderState === "idle" && (
-              <>
-                <button
-                  className="btn-primary flex-1 min-h-[52px] text-base sm:flex-none"
-                  type="button"
-                  onClick={() => void startRecording()}
-                >
-                  <Mic className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
-                  {t("common.startRecording")}
-                </button>
-                <button className="btn-secondary" onClick={skipPrompt}>{t("record.skip")}</button>
-              </>
-            )}
-            {recorderState === "recording" && (
+          {/* 5. Submit area — only after recording is done */}
+          {recorderState === "recorded" && (
+            <div className="mt-3 flex flex-wrap gap-3 sm:mt-5">
+              <button className="btn-secondary" onClick={() => audioRef.current?.play()}>{t("record.play")}</button>
+              <button className="btn-secondary" onClick={resetRecording}>{t("record.rerecord")}</button>
               <button
-                className="btn-danger flex-1 min-h-[52px] text-base sm:flex-none"
-                onClick={stopRecording}
+                className="btn-primary flex-1 min-h-[52px] text-base sm:flex-none"
+                disabled={busy}
+                onClick={submitRecording}
               >
-                {t("record.stop")}
+                {busy ? (
+                  <span className="flex items-center gap-2">
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    {t("record.submitting")}
+                  </span>
+                ) : (
+                  <>
+                    <Upload className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
+                    {t("record.submit")}
+                  </>
+                )}
               </button>
-            )}
-            {recorderState === "recorded" && (
-              <>
-                <button className="btn-secondary" onClick={() => audioRef.current?.play()}>{t("record.play")}</button>
-                <button className="btn-secondary" onClick={resetRecording}>{t("record.rerecord")}</button>
-                <button
-                  className="btn-primary flex-1 min-h-[52px] text-base sm:flex-none"
-                  disabled={busy}
-                  onClick={submitRecording}
-                >
-                  {busy ? (
-                    <span className="flex items-center gap-2">
-                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                      {t("record.submitting")}
-                    </span>
-                  ) : (
-                    <>
-                      <Upload className="mr-2 h-[18px] w-[18px]" aria-hidden="true" />
-                      {t("record.submit")}
-                    </>
-                  )}
-                </button>
-              </>
-            )}
-          </div>
+            </div>
+          )}
 
-          {error && <p className="mt-5 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
+          {error && <p className="mt-3 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700 sm:mt-4">{error}</p>}
 
-          <div className="mt-8">
+          <div className="mt-5 sm:mt-8">
             <h2 className="text-lg font-black text-slate-950">{t("record.recent")}</h2>
-            <div className="mt-3 space-y-3">
+            <div className="mt-2 space-y-2 sm:mt-3 sm:space-y-3">
               {history.slice(0, 4).map((item) => (
                 <div className="flex items-center justify-between rounded-2xl border border-slate-200 p-3" key={item.id}>
                   <p className="line-clamp-1 text-sm font-semibold text-slate-700">{item.sentenceText}</p>
@@ -2632,8 +2635,6 @@ function StatusPill({ status }: { status: string }) {
 }
 
 function LoadingScreen() {
-  const bars = [22, 38, 56, 32, 70, 44, 84, 50, 68, 34, 58, 26];
-
   return (
     <div
       role="status"
@@ -2641,25 +2642,12 @@ function LoadingScreen() {
       className="flex min-h-[calc(100vh-68px)] items-center justify-center bg-white px-6"
     >
       <span className="sr-only">Loading Rajo AI</span>
-      <div className="flex w-full max-w-xs flex-col items-center">
-        <div className="rajo-loader-logo-wrap">
-          <img
-            alt="Rajo AI"
-            className="h-16 w-auto object-contain sm:h-[76px]"
-            src="/logo%20rajo%20ai.png"
-          />
-        </div>
-        <div className="rajo-loader-wave mt-8" aria-hidden="true">
-          {bars.map((height, index) => (
-            <span
-              key={index}
-              style={{
-                height: `${height}px`,
-                animationDelay: `${index * 90}ms`,
-              }}
-            />
-          ))}
-        </div>
+      <div className="rajo-loader-logo-wrap">
+        <img
+          alt="Rajo AI"
+          className="h-16 w-auto object-contain sm:h-[76px]"
+          src="/logo%20rajo%20ai.png"
+        />
       </div>
     </div>
   );

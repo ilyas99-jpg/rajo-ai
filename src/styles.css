@@ -110,82 +110,59 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  animation: rajo-logo-pulse 2.8s ease-in-out infinite;
+  animation: rajo-logo-entrance 0.9s cubic-bezier(0.22, 1, 0.36, 1) both,
+             rajo-logo-breathe 3.6s ease-in-out 0.9s infinite;
 }
 
 .rajo-loader-logo-wrap::before {
   content: "";
   position: absolute;
-  inset: -18px -28px;
+  inset: -24px -32px;
   z-index: -1;
   border-radius: 999px;
-  background:
-    radial-gradient(circle at 35% 45%, rgba(70, 126, 211, 0.18), transparent 62%),
-    radial-gradient(circle at 70% 55%, rgba(36, 88, 168, 0.12), transparent 58%);
-  filter: blur(10px);
-  opacity: 0.9;
-  animation: rajo-halo-fade 3.2s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(70, 126, 211, 0.22) 0%, transparent 70%);
+  filter: blur(18px);
+  animation: rajo-glow 3.6s ease-in-out 0.9s infinite;
 }
 
-.rajo-loader-wave {
-  display: flex;
-  height: 88px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-}
-
-.rajo-loader-wave span {
-  display: block;
-  width: 4px;
-  min-height: 18px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #74a5ec 0%, #467ed3 52%, #2458a8 100%);
-  box-shadow: 0 10px 24px rgba(70, 126, 211, 0.14);
-  transform-origin: center;
-  animation: rajo-wave 1.55s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-@keyframes rajo-logo-pulse {
-  0%,
+@keyframes rajo-logo-entrance {
+  0% {
+    opacity: 0;
+    transform: scale(0.88);
+    filter: blur(6px);
+  }
   100% {
-    opacity: 0.86;
-    transform: translateY(0) scale(0.985);
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes rajo-logo-breathe {
+  0%, 100% {
+    opacity: 0.82;
+    transform: scale(0.978);
   }
   50% {
     opacity: 1;
-    transform: translateY(-2px) scale(1);
+    transform: scale(1.012);
   }
 }
 
-@keyframes rajo-halo-fade {
-  0%,
-  100% {
-    opacity: 0.45;
-    transform: scale(0.96);
+@keyframes rajo-glow {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.92);
   }
   50% {
-    opacity: 0.95;
-    transform: scale(1.04);
-  }
-}
-
-@keyframes rajo-wave {
-  0%,
-  100% {
-    opacity: 0.34;
-    transform: scaleY(0.38);
-  }
-  45% {
-    opacity: 0.82;
-    transform: scaleY(0.88);
+    opacity: 0.85;
+    transform: scale(1.08);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .rajo-loader-logo-wrap,
-  .rajo-loader-logo-wrap::before,
-  .rajo-loader-wave span {
+  .rajo-loader-logo-wrap::before {
     animation: none;
   }
 }
