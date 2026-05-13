@@ -111,7 +111,13 @@ async function getProfileByAuthUserId(authUserId: string): Promise<AuthProfile |
     .maybeSingle();
 
   if (error) throw new Error(`Could not load your profile: ${error.message}`);
-  return data ? mapDonorRow(data as DonorRow) : null;
+  if (!data) return null;
+
+  const profile = mapDonorRow(data as DonorRow);
+  if (profile.user.avatarUrl) {
+    profile.user.avatarUrl = await resolveAvatarUrl(profile.user.avatarUrl);
+  }
+  return profile;
 }
 
 export async function getCurrentSessionProfile(): Promise<AuthProfile | null> {
@@ -131,7 +137,13 @@ export async function getCurrentSessionProfile(): Promise<AuthProfile | null> {
     .maybeSingle();
 
   if (error) throw new Error(`Could not load your profile: ${error.message}`);
-  return data ? mapDonorRow(data as DonorRow) : null;
+  if (!data) return null;
+
+  const profile = mapDonorRow(data as DonorRow);
+  if (profile.user.avatarUrl) {
+    profile.user.avatarUrl = await resolveAvatarUrl(profile.user.avatarUrl);
+  }
+  return profile;
 }
 
 export async function registerAndCreateProfile(
@@ -765,6 +777,31 @@ export async function updateUserProfile(donorId: string, updates: ProfileUpdates
   if (error) throw new Error(`Could not update profile: ${error.message}`);
 }
 
+// Extract the storage path from whatever format is stored in avatar_url.
+// Old rows stored full public URLs; new rows store the path directly.
+function extractAvatarPath(stored: string): string {
+  if (!stored.startsWith("http")) return stored;
+  // Match both /object/public/avatars/{path} and /object/sign/avatars/{path}?token=...
+  const match = stored.match(/\/object\/(?:public|sign)\/avatars\/([^?]+)/);
+  return match ? match[1] : stored;
+}
+
+// Generate a fresh signed URL from a stored avatar_url value (path or legacy URL).
+// Signed URLs work regardless of bucket visibility and expire after 24 hours.
+// Returns undefined if generation fails so the UI can fall back to the initial letter.
+async function resolveAvatarUrl(stored: string): Promise<string | undefined> {
+  if (!stored) return undefined;
+  const path = extractAvatarPath(stored);
+  // If extraction failed the value is still a full URL — return it as-is.
+  // The onError fallback in the UI handles broken images gracefully.
+  if (path === stored && stored.startsWith("http")) return stored;
+  const { data, error } = await getSupabase()
+    .storage
+    .from("avatars")
+    .createSignedUrl(path, 60 * 60 * 24); // 24-hour TTL; regenerated on every load
+  return (!error && data?.signedUrl) ? data.signedUrl : undefined;
+}
+
 export async function uploadAvatarPhoto(authUserId: string, donorId: string, file: File): Promise<string> {
   const sb = getSupabase();
   const ext  = file.name.split(".").pop() ?? "jpg";
@@ -776,15 +813,15 @@ export async function uploadAvatarPhoto(authUserId: string, donorId: string, fil
 
   if (uploadError) throw new Error(`Could not upload avatar: ${uploadError.message}`);
 
-  const { data: urlData } = sb.storage.from("avatars").getPublicUrl(path);
-  const avatarUrl = urlData.publicUrl;
-
+  // Store the storage path — not a public URL — so a fresh signed URL can be
+  // generated on every profile load regardless of bucket visibility.
   const { error: updateError } = await sb
     .from("voice_donors")
-    .update({ avatar_url: avatarUrl })
+    .update({ avatar_url: path })
     .eq("id", donorId);
 
   if (updateError) throw new Error(`Could not save avatar: ${updateError.message}`);
 
-  return avatarUrl;
+  // Return a fresh signed URL for immediate display in the current session.
+  return (await resolveAvatarUrl(path)) ?? "";
 }

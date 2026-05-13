@@ -87,14 +87,24 @@ export function AdminDashboard() {
   useEffect(() => {
     const sb = getSupabase();
 
-    sb.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+    // getUser() makes a live network call to Supabase — verifies the session is
+    // still valid server-side (e.g. account not deleted), not just from localStorage.
+    void sb.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        setSession(null);
+        return;
+      }
+      void sb.auth.getSession().then(({ data: { session } }) => {
+        setSession(session);
+      });
     });
 
     const {
       data: { subscription },
-    } = sb.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
+    } = sb.auth.onAuthStateChange((event, newSession) => {
+      // INITIAL_SESSION fires from localStorage — skip it; getUser() above is
+      // the authoritative server-verified source for the initial state.
+      if (event !== "INITIAL_SESSION") setSession(newSession);
     });
 
     return () => subscription.unsubscribe();

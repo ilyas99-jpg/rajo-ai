@@ -39,13 +39,20 @@ function AvatarBubble({
   initial: string;
   size: "sm" | "md";
 }) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  // Reset failed state when the URL changes (e.g. after a new upload).
+  useEffect(() => { setImgFailed(false); }, [avatarUrl]);
+
   const dim = size === "sm" ? "h-8 w-8 text-[13px]" : "h-[30px] w-[30px] text-[12px]";
-  if (avatarUrl) {
+
+  if (avatarUrl && !imgFailed) {
     return (
       <img
         src={avatarUrl}
         alt="Profile"
         className={`${dim} rounded-full object-cover ring-2 ring-white`}
+        onError={() => setImgFailed(true)}
       />
     );
   }

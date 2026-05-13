@@ -1915,6 +1915,7 @@ function ProfilePage({
                     src={previewUrl}
                     alt="Profile"
                     className="h-20 w-20 rounded-full object-cover ring-4 ring-[#467ed3]/10"
+                    onError={() => setPreviewUrl(undefined)}
                   />
                 ) : (
                   <span
