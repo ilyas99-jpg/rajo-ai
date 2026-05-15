@@ -37,6 +37,8 @@ export type AdminRecording = {
   speaking_speed: string | null;
   consent: boolean | null;
   status: ReviewStatus;
+  approved: boolean | null;
+  dataset_ready: boolean | null;
   review_notes: string | null;
   reviewed_at: string | null;
   created_at: string;

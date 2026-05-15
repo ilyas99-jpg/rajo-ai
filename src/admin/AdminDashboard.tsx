@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import {
+  approveRecording,
   createPrompt,
   createPromptPack,
   deletePrompt,
@@ -258,14 +259,27 @@ export function AdminDashboard() {
     setError("");
 
     try {
-      await updateRecordingStatus(recordingId, status);
-      setRecordings((current) =>
-        current.map((recording) =>
-          recording.id === recordingId
-            ? { ...recording, status, reviewed_at: new Date().toISOString() }
-            : recording,
-        ),
-      );
+      if (status === "approved") {
+        const recording = recordings.find((r) => r.id === recordingId);
+        if (!recording) throw new Error("Recording not found.");
+        await approveRecording(recording);
+        setRecordings((current) =>
+          current.map((r) =>
+            r.id === recordingId
+              ? { ...r, status, approved: true, dataset_ready: true, reviewed_at: new Date().toISOString() }
+              : r,
+          ),
+        );
+      } else {
+        await updateRecordingStatus(recordingId, status);
+        setRecordings((current) =>
+          current.map((r) =>
+            r.id === recordingId
+              ? { ...r, status, reviewed_at: new Date().toISOString() }
+              : r,
+          ),
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update recording.");
     } finally {

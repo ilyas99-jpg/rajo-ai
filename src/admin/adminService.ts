@@ -11,7 +11,33 @@ const SIGNED_URL_EXPIRY_SECONDS = 3600;
 
 // Strip any leading slash or bucket prefix that may appear in legacy rows.
 function normalizePath(rawPath: string): string {
-  return rawPath.replace(/^\/+/, "").replace(/^voice-recordings\//, "");
+  return rawPath
+    .replace(/^\/+/, "")
+    .replace(/^voice-recordings\//, "")
+    .replace(/^approved-dataset\//, "");
+}
+
+// Build a clean, human-readable path for the approved-dataset bucket.
+// Format: dialect/donor_id/sentence_id-duration.webm
+function buildDatasetPath(recording: AdminRecording): string {
+  const dialect = (recording.dialect ?? "unknown")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+  const duration =
+    recording.duration_seconds != null
+      ? recording.duration_seconds.toFixed(1)
+      : "0.0";
+  return `${dialect}/${recording.donor_id}/${recording.sentence_id}-${duration}.webm`;
+}
+
+// Build a collision-safe destination path by appending a timestamp before the
+// file extension when a file with the same name already exists in the bucket.
+function withTimestampSuffix(path: string): string {
+  const lastDot = path.lastIndexOf(".");
+  const base = lastDot >= 0 ? path.slice(0, lastDot) : path;
+  const ext = lastDot >= 0 ? path.slice(lastDot) : "";
+  return `${base}-${Date.now()}${ext}`;
 }
 
 export async function fetchAdminDashboardData(): Promise<AdminDashboardData> {
@@ -43,6 +69,8 @@ export async function fetchAdminDashboardData(): Promise<AdminDashboardData> {
         speaking_speed,
         consent,
         status,
+        approved,
+        dataset_ready,
         review_notes,
         reviewed_at,
         created_at,
@@ -133,6 +161,55 @@ export async function updateRecordingStatus(
     .eq("id", recordingId);
 
   if (error) throw new Error(`Could not update recording: ${error.message}`);
+}
+
+export async function approveRecording(recording: AdminRecording): Promise<void> {
+  const sb = getSupabase();
+  const sourcePath = recording.audio_path ? normalizePath(recording.audio_path) : "";
+
+  if (!sourcePath) {
+    throw new Error("Recording has no audio path — cannot copy to dataset.");
+  }
+
+  // Download the original file from voice-recordings.
+  const { data: fileBlob, error: downloadError } = await sb.storage
+    .from("voice-recordings")
+    .download(sourcePath);
+
+  if (downloadError || !fileBlob) {
+    throw new Error(`Could not read source audio: ${downloadError?.message ?? "empty file"}`);
+  }
+
+  // Upload into approved-dataset using a clean, readable path.
+  let destPath = buildDatasetPath(recording);
+  const { error: uploadError } = await sb.storage
+    .from("approved-dataset")
+    .upload(destPath, fileBlob, { upsert: false });
+
+  if (uploadError) {
+    // Retry with a timestamp suffix to avoid filename collisions.
+    destPath = withTimestampSuffix(sourcePath);
+    const { error: retryError } = await sb.storage
+      .from("approved-dataset")
+      .upload(destPath, fileBlob, { upsert: false });
+
+    if (retryError) {
+      throw new Error(`Could not copy audio to approved-dataset: ${retryError.message}`);
+    }
+  }
+
+  // Mark the database row as approved and dataset-ready.
+  const { error: dbError } = await sb
+    .from("voice_recordings")
+    .update({
+      status: "approved",
+      approved: true,
+      dataset_ready: true,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq("id", recording.id);
+
+  if (dbError) throw new Error(`Could not update recording: ${dbError.message}`);
 }
 
 export async function updateRecordingQualityScore(
